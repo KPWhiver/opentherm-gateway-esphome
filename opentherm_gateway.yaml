@@ -34,80 +34,43 @@ uart:
   rx_pin: GPIO3
   baud_rate: 9600
 
-sensor:
+custom_component:
+- lambda: |-
+    auto opentherm_gateway = new OpenthermGateway(id(uart_bus));
+    return {opentherm_gateway};
+  id: opentherm_gateway_uart
+
+binary_sensor:
 - platform: custom
   lambda: |-
-    auto openthermGateway = new OpenthermGateway(id(uart_bus));
-    App.register_component(openthermGateway);
+    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
+    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
     return {
       // Master state
-      openthermGateway->s_master_central_heating_1,
-      openthermGateway->s_master_water_heating,
-      openthermGateway->s_master_cooling,
-      openthermGateway->s_master_outside_temperature_compensation,
-      openthermGateway->s_master_central_heating_2,
+      opentherm_gateway->s_master_central_heating_1,
+      opentherm_gateway->s_master_water_heating,
+      opentherm_gateway->s_master_cooling,
+      opentherm_gateway->s_master_outside_temperature_compensation,
+      opentherm_gateway->s_master_central_heating_2,
 
       // Slave state
-      openthermGateway->s_slave_fault,
-      openthermGateway->s_slave_central_heating_1,
-      openthermGateway->s_slave_water_heating,
-      openthermGateway->s_slave_flame,
-      openthermGateway->s_slave_cooling,
-      openthermGateway->s_slave_central_heating_2,
-      openthermGateway->s_slave_diagnostic_event,
+      opentherm_gateway->s_slave_fault,
+      opentherm_gateway->s_slave_central_heating_1,
+      opentherm_gateway->s_slave_water_heating,
+      opentherm_gateway->s_slave_flame,
+      opentherm_gateway->s_slave_cooling,
+      opentherm_gateway->s_slave_central_heating_2,
+      opentherm_gateway->s_slave_diagnostic_event,
 
       // Faults
-      openthermGateway->s_service_required,
-      openthermGateway->s_lockout_reset,
-      openthermGateway->s_low_water_pressure,
-      openthermGateway->s_gas_flame_fault,
-      openthermGateway->s_air_pressure_fault,
-      openthermGateway->s_water_overtemperature,
-
-      // Setpoints
-      openthermGateway->s_max_central_heating_setpoint,
-      openthermGateway->s_central_heating_setpoint_1,
-      openthermGateway->s_central_heating_setpoint_2,
-      openthermGateway->s_hot_water_setpoint,
-      openthermGateway->s_remote_override_room_setpoint,
-      openthermGateway->s_room_setpoint_1,
-      openthermGateway->s_room_setpoint_2,
-
-      // Temperatures
-      openthermGateway->s_central_heating_temperature,
-      openthermGateway->s_hot_water_1_temperature,
-      openthermGateway->s_hot_water_2_temperature,
-      openthermGateway->s_room_temperature,
-      openthermGateway->s_outside_temperature,
-      openthermGateway->s_return_water_temperature,
-      openthermGateway->s_solar_storage_temperature,
-      openthermGateway->s_solar_collector_temperature,
-      openthermGateway->s_central_heating_2_flow_water_temperature,
-      openthermGateway->s_exhaust_temperature,
-
-      // Modulation
-      openthermGateway->s_max_relative_modulation_level,
-      openthermGateway->s_max_boiler_capacity,
-      openthermGateway->s_min_modulation_level,
-      openthermGateway->s_relative_modulation_level,
-
-      // Water
-      openthermGateway->s_central_heating_water_pressure,
-      openthermGateway->s_hot_water_flow_rate,
-
-      // Starts
-      openthermGateway->s_central_heating_burner_starts,
-      openthermGateway->s_central_heating_pump_starts,
-      openthermGateway->s_hot_water_pump_starts,
-      openthermGateway->s_hot_water_burner_starts,
-
-      // Operation hours
-      openthermGateway->s_central_heating_burner_operation_hours,
-      openthermGateway->s_central_heating_pump_operation_hours,
-      openthermGateway->s_hot_water_pump_operation_hours,
-      openthermGateway->s_hot_Water_burner_operation_hours
+      opentherm_gateway->s_service_required,
+      opentherm_gateway->s_lockout_reset,
+      opentherm_gateway->s_low_water_pressure,
+      opentherm_gateway->s_gas_flame_fault,
+      opentherm_gateway->s_air_pressure_fault,
+      opentherm_gateway->s_water_overtemperature
     };
-  sensors:
+  binary_sensors:
   # Master state
   - name: "Master Central Heating 1"
   - name: "Master Water Heating"
@@ -132,6 +95,56 @@ sensor:
   - name: "Air Pressure Fault"
   - name: "Water Overtemperature"
 
+sensor:
+- platform: custom
+  lambda: |-
+    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
+    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
+    return {
+      // Setpoints
+      opentherm_gateway->s_max_central_heating_setpoint,
+      opentherm_gateway->s_central_heating_setpoint_1,
+      opentherm_gateway->s_central_heating_setpoint_2,
+      opentherm_gateway->s_hot_water_setpoint,
+      opentherm_gateway->s_remote_override_room_setpoint,
+      opentherm_gateway->s_room_setpoint_1,
+      opentherm_gateway->s_room_setpoint_2,
+
+      // Temperatures
+      opentherm_gateway->s_central_heating_temperature,
+      opentherm_gateway->s_hot_water_1_temperature,
+      opentherm_gateway->s_hot_water_2_temperature,
+      opentherm_gateway->s_room_temperature,
+      opentherm_gateway->s_outside_temperature,
+      opentherm_gateway->s_return_water_temperature,
+      opentherm_gateway->s_solar_storage_temperature,
+      opentherm_gateway->s_solar_collector_temperature,
+      opentherm_gateway->s_central_heating_2_flow_water_temperature,
+      opentherm_gateway->s_exhaust_temperature,
+
+      // Modulation
+      opentherm_gateway->s_max_relative_modulation_level,
+      opentherm_gateway->s_max_boiler_capacity,
+      opentherm_gateway->s_min_modulation_level,
+      opentherm_gateway->s_relative_modulation_level,
+
+      // Water
+      opentherm_gateway->s_central_heating_water_pressure,
+      opentherm_gateway->s_hot_water_flow_rate,
+
+      // Starts
+      opentherm_gateway->s_central_heating_burner_starts,
+      opentherm_gateway->s_central_heating_pump_starts,
+      opentherm_gateway->s_hot_water_pump_starts,
+      opentherm_gateway->s_hot_water_burner_starts,
+
+      // Operation hours
+      opentherm_gateway->s_central_heating_burner_operation_hours,
+      opentherm_gateway->s_central_heating_pump_operation_hours,
+      opentherm_gateway->s_hot_water_pump_operation_hours,
+      opentherm_gateway->s_hot_Water_burner_operation_hours
+    };
+  sensors:
   # Setpoints
   - name: "Max Central Heating Setpoint"
     unit_of_measurement: "°C"
