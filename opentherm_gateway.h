@@ -44,28 +44,28 @@ public:
 
 public:
     // Master state
-    Sensor *s_master_central_heating_1 = new Sensor();
-    Sensor *s_master_water_heating = new Sensor();
-    Sensor *s_master_cooling = new Sensor();
-    Sensor *s_master_outside_temperature_compensation = new Sensor();
-    Sensor *s_master_central_heating_2 = new Sensor();
+    BinarySensor *s_master_central_heating_1 = new BinarySensor();
+    BinarySensor *s_master_water_heating = new BinarySensor();
+    BinarySensor *s_master_cooling = new BinarySensor();
+    BinarySensor *s_master_outside_temperature_compensation = new BinarySensor();
+    BinarySensor *s_master_central_heating_2 = new BinarySensor();
 
     // Slave state
-    Sensor *s_slave_fault = new Sensor();
-    Sensor *s_slave_central_heating_1 = new Sensor();
-    Sensor *s_slave_water_heating = new Sensor();
-    Sensor *s_slave_flame = new Sensor();
-    Sensor *s_slave_cooling = new Sensor();
-    Sensor *s_slave_central_heating_2 = new Sensor();
-    Sensor *s_slave_diagnostic_event = new Sensor();
+    BinarySensor *s_slave_fault = new BinarySensor();
+    BinarySensor *s_slave_central_heating_1 = new BinarySensor();
+    BinarySensor *s_slave_water_heating = new BinarySensor();
+    BinarySensor *s_slave_flame = new BinarySensor();
+    BinarySensor *s_slave_cooling = new BinarySensor();
+    BinarySensor *s_slave_central_heating_2 = new BinarySensor();
+    BinarySensor *s_slave_diagnostic_event = new BinarySensor();
 
     // Faults
-    Sensor *s_service_required = new Sensor();
-    Sensor *s_lockout_reset = new Sensor();
-    Sensor *s_low_water_pressure = new Sensor();
-    Sensor *s_gas_flame_fault = new Sensor();
-    Sensor *s_air_pressure_fault = new Sensor();
-    Sensor *s_water_overtemperature = new Sensor();
+    BinarySensor *s_service_required = new BinarySensor();
+    BinarySensor *s_lockout_reset = new BinarySensor();
+    BinarySensor *s_low_water_pressure = new BinarySensor();
+    BinarySensor *s_gas_flame_fault = new BinarySensor();
+    BinarySensor *s_air_pressure_fault = new BinarySensor();
+    BinarySensor *s_water_overtemperature = new BinarySensor();
 
     // Setpoints
     Sensor *s_max_central_heating_setpoint = new Sensor();
