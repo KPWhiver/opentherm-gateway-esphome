@@ -1,0 +1,222 @@
+esphome:
+  name: opentherm_gateway
+  platform: ESP8266
+  board: nodemcuv2
+  includes:
+  - opentherm_gateway.h
+
+wifi:
+  ssid: "*25*"
+  password: !secret wifipass
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Opentherm Fallback Hotspot"
+    password: !secret fallbackwifipass
+
+captive_portal:
+
+# Enable logging
+logger:
+  baud_rate: 0
+  level: DEBUG
+  esp8266_store_log_strings_in_flash: False
+
+# Enable Home Assistant API
+api:
+  reboot_timeout: 1min
+
+ota:
+
+uart:
+  id: uart_bus
+  tx_pin: GPIO1
+  rx_pin: GPIO3
+  baud_rate: 9600
+
+sensor:
+- platform: custom
+  lambda: |-
+    auto openthermGateway = new OpenthermGateway(id(uart_bus));
+    App.register_component(openthermGateway);
+    return {
+      // Master state
+      openthermGateway->s_master_central_heating_1,
+      openthermGateway->s_master_water_heating,
+      openthermGateway->s_master_cooling,
+      openthermGateway->s_master_outside_temperature_compensation,
+      openthermGateway->s_master_central_heating_2,
+
+      // Slave state
+      openthermGateway->s_slave_fault,
+      openthermGateway->s_slave_central_heating_1,
+      openthermGateway->s_slave_water_heating,
+      openthermGateway->s_slave_flame,
+      openthermGateway->s_slave_cooling,
+      openthermGateway->s_slave_central_heating_2,
+      openthermGateway->s_slave_diagnostic_event,
+
+      // Faults
+      openthermGateway->s_service_required,
+      openthermGateway->s_lockout_reset,
+      openthermGateway->s_low_water_pressure,
+      openthermGateway->s_gas_flame_fault,
+      openthermGateway->s_air_pressure_fault,
+      openthermGateway->s_water_overtemperature,
+
+      // Setpoints
+      openthermGateway->s_max_central_heating_setpoint,
+      openthermGateway->s_central_heating_setpoint_1,
+      openthermGateway->s_central_heating_setpoint_2,
+      openthermGateway->s_hot_water_setpoint,
+      openthermGateway->s_remote_override_room_setpoint,
+      openthermGateway->s_room_setpoint_1,
+      openthermGateway->s_room_setpoint_2,
+
+      // Temperatures
+      openthermGateway->s_central_heating_temperature,
+      openthermGateway->s_hot_water_1_temperature,
+      openthermGateway->s_hot_water_2_temperature,
+      openthermGateway->s_room_temperature,
+      openthermGateway->s_outside_temperature,
+      openthermGateway->s_return_water_temperature,
+      openthermGateway->s_solar_storage_temperature,
+      openthermGateway->s_solar_collector_temperature,
+      openthermGateway->s_central_heating_2_flow_water_temperature,
+      openthermGateway->s_exhaust_temperature,
+
+      // Modulation
+      openthermGateway->s_max_relative_modulation_level,
+      openthermGateway->s_max_boiler_capacity,
+      openthermGateway->s_min_modulation_level,
+      openthermGateway->s_relative_modulation_level,
+
+      // Water
+      openthermGateway->s_central_heating_water_pressure,
+      openthermGateway->s_hot_water_flow_rate,
+
+      // Starts
+      openthermGateway->s_central_heating_burner_starts,
+      openthermGateway->s_central_heating_pump_starts,
+      openthermGateway->s_hot_water_pump_starts,
+      openthermGateway->s_hot_water_burner_starts,
+
+      // Operation hours
+      openthermGateway->s_central_heating_burner_operation_hours,
+      openthermGateway->s_central_heating_pump_operation_hours,
+      openthermGateway->s_hot_water_pump_operation_hours,
+      openthermGateway->s_hot_Water_burner_operation_hours
+    };
+  sensors:
+  # Master state
+  - name: "Master Central Heating 1"
+  - name: "Master Water Heating"
+  - name: "Master Cooling"
+  - name: "Master Outside Temperature Compensation"
+  - name: "Master Central Heating 2"
+
+  # Slave state
+  - name: "Slave Fault"
+  - name: "Slave Central Heating 1"
+  - name: "Slave Water Heating"
+  - name: "Slave Flame"
+  - name: "Slave Cooling"
+  - name: "Slave Central Heating 2"
+  - name: "Slave Diagnostic Event"
+
+  # Faults
+  - name: "Service Required"
+  - name: "Lockout Reset"
+  - name: "Low water Pressure"
+  - name: "Gas Flame Fault"
+  - name: "Air Pressure Fault"
+  - name: "Water Overtemperature"
+
+  # Setpoints
+  - name: "Max Central Heating Setpoint"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Central Heating Setpoint 1"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Central Heating Setpoint 2"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Hot Water Setpoint"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Remote Override Room Setpoint"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Room Setpoint 1"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Room Setpoint 2"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+
+  # Temperatures
+  - name: "Central Heating Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Hot Water 1 Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Hot Water 2 Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Room Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Outside Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Return Water Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Solar Storage Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Solar Collector Temperature"
+    unit_of_measurement: "°C"
+  - name: "Central Heating 2 Flow Water Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Exhaust Temperature"
+    unit_of_measurement: "°C"
+
+  # Modulation
+  - name: "Max Relative Modulation Level"
+    unit_of_measurement: "%"
+    accuracy_decimals: 2
+  - name: "Max Boiler Capacity"
+    unit_of_measurement: "kWh"
+  - name: "Min Modulation Level"
+    unit_of_measurement: "%"
+  - name: "Relative Modulation Level"
+    unit_of_measurement: "%"
+    accuracy_decimals: 2
+
+  # Water
+  - name: "Central Heating Water Pressure"
+    unit_of_measurement: "bar"
+    accuracy_decimals: 2
+  - name: "Hot Water Flow Rate"
+    unit_of_measurement: "litres/minute"
+    accuracy_decimals: 2
+
+  # Starts
+  - name: "Central Heating Burner Starts"
+  - name: "Central Heating Pump Starts"
+  - name: "Hot Water Pump Starts"
+  - name: "Hot Water Burner Starts"
+
+  # Operation hours
+  - name: "Central Heating Burner Operation Time"
+    unit_of_measurement: "h"
+  - name: "Central Heating Pump Operation Time"
+    unit_of_measurement: "h"
+  - name: "Hot Water Pump Operation Time"
+    unit_of_measurement: "h"
+  - name: "Hot Water Burner Operation Time"
+    unit_of_measurement: "h"
