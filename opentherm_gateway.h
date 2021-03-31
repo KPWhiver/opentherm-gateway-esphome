@@ -3,30 +3,25 @@
 #include <bitset>
 
 class OpenthermGateway : public Component, public UARTDevice {
-public:
-    std::string file_content;
-    size_t file_index = 0;
 
-
-    std::string readline() {
-        std::string buffer(9, ' ');
-        uint32_t read_length = 0;
+    std::string const &readline() {
+        static uint32_t buffer_size = 128;
+        static std::string buffer;
+        buffer.clear();
+        buffer.reserve(buffer_size);
 
         while (true) {
             char c = read();
-            if (c <= 0) // ignore
+            if (c <= 0 || c == '\r') // ignore
                 continue;
 
-            if (c == '\r' || c == '\n') { // stop
-                if (read_length != 9)
-                    return "";
+            if (c == '\n') { // stop
+                //ESP_LOGD("otgw", buffer.c_str());
                 return buffer;
             }
 
-            if (read_length < 9)
-                buffer[read_length] = c;
-
-            ++read_length;
+            if (buffer.size() < buffer_size)
+                buffer += c;
         }
     }
 
@@ -112,18 +107,17 @@ public:
 
     OpenthermGateway(UARTComponent *parent) : UARTDevice(parent) {}
 
-    void setup() {
-        /*s_service_required->publish_state(0);
-        s_lockout_reset->publish_state(0);
-        s_low_water_pressure->publish_state(0);
-        s_gas_flame_fault->publish_state(0);
-        s_air_pressure_fault->publish_state(0);
-        s_water_overtemperature->publish_state(0);*/
+    void setup() override {
     }
 
-    void loop() { // override {
+    
+
+    void loop() override {
         while (available()) {
-            std::string line = readline();
+            std::string const &line = readline();
+
+            if (line.size() != 9)
+                continue;
 
             switch (line[0]) {
                 case 'B':
