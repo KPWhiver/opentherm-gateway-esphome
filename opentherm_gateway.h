@@ -1,3 +1,6 @@
+#ifndef OPENTHERM_GATEWAY_H
+#define OPENTHERM_GATEWAY_H
+
 #include "esphome.h"
 #include <string>
 #include <bitset>
@@ -282,4 +285,45 @@ public:
             }
         }
     }
+
+    bool is_error(std::string const &line) {
+        if (line[0] == 'N' && line[1] == 'G')
+            ESP_LOGD("otgw", "The command code is unknown.");
+        else if (line[0] == 'S' && line[1] == 'E')
+            ESP_LOGD("otgw", "The command contained an unexpected character or was incomplete.");
+        else if (line[0] == 'B' && line[1] == 'V')
+            ESP_LOGD("otgw", "The command contained a data value that is not allowed.");
+        else if (line[0] == 'O' && line[1] == 'R')
+            ESP_LOGD("otgw", "A number was specified outside of the allowed range.");
+        else if (line[0] == 'N' && line[1] == 'S')
+            ESP_LOGD("otgw", "The alternative Data-ID could not be added because the table is full.");
+        else if (line[0] == 'N' && line[1] == 'F')
+            ESP_LOGD("otgw", "The specified alternative Data-ID could not be removed because it does not exist in the table.");
+        else if (line[0] == 'O' && line[1] == 'E')
+            ESP_LOGD("otgw", "The processor was busy and failed to process all received characters");
+        else
+            return false;
+
+        return true;
+    }
+
+    bool set_room_setpoint(float temperature) {
+        char command[11];
+        sprintf(command, "TC=%2.2f\r\n", temperature);
+
+        write_str(command);
+        flush();
+
+        do {
+            std::string const &line = readline();
+            if (line[0] == 'T' && line[1] == 'T')
+                return true;   
+            if (is_error(line))
+                return false;
+        } while(available());
+
+        return true;
+    }
 };
+
+#endif

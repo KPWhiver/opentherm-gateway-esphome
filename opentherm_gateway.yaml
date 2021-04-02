@@ -4,6 +4,7 @@ esphome:
   board: nodemcuv2
   includes:
   - opentherm_gateway.h
+  - opentherm_gateway_thermostat.h
 
 wifi:
   ssid: "*25*"
@@ -233,3 +234,14 @@ sensor:
     unit_of_measurement: "h"
   - name: "Hot Water Burner Operation Time"
     unit_of_measurement: "h"
+
+climate:
+- platform: custom
+  lambda: |-
+    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
+    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
+    auto opentherm_gateway_thermostat = new OpenthermGatewayThermostat(opentherm_gateway);
+    return {opentherm_gateway_thermostat};
+
+  climates:
+  - name: "Thermostat"
