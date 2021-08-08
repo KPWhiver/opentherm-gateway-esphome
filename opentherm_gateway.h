@@ -19,7 +19,6 @@ class OpenthermGateway : public Component, public UARTDevice {
                 continue;
 
             if (c == '\n') { // stop
-                //ESP_LOGD("otgw", buffer.c_str());
                 return buffer;
             }
 
@@ -121,14 +120,14 @@ public:
         pic_reset.pin_mode(INPUT);
     }
 
-    
-
     void loop() override {
         while (available()) {
             std::string const &line = readline();
 
-            if (line.size() != 9)
+            if (line.size() != 9) {
+                ESP_LOGD("otgw", "Received line (%s) is not 9 characters", line.data());
                 continue;
+            }
 
             switch (line[0]) {
                 case 'B':
