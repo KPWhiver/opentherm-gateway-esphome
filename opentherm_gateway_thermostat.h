@@ -50,7 +50,7 @@ public:
     ClimateTraits traits() override {
         auto traits = climate::ClimateTraits();
         traits.set_supports_current_temperature(true);
-        traits.set_supports_heat_mode(true);
+        traits.set_supported_modes({esphome::climate::CLIMATE_MODE_HEAT});
         traits.set_visual_min_temperature(0);
         traits.set_visual_max_temperature(30);
         traits.set_visual_temperature_step(0.01);
