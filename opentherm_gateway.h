@@ -293,6 +293,15 @@ public:
         }
     }
 
+    bool is_busy(std::string const &line) {
+        if (line[0] == 'O' && line[1] == 'E')
+            ESP_LOGD("otgw", "The processor was busy and failed to process all received characters");
+        else
+            return false;
+
+        return true;
+    }
+
     bool is_error(std::string const &line) {
         if (line[0] == 'N' && line[1] == 'G')
             ESP_LOGD("otgw", "The command code is unknown.");
@@ -306,30 +315,44 @@ public:
             ESP_LOGD("otgw", "The alternative Data-ID could not be added because the table is full.");
         else if (line[0] == 'N' && line[1] == 'F')
             ESP_LOGD("otgw", "The specified alternative Data-ID could not be removed because it does not exist in the table.");
-        else if (line[0] == 'O' && line[1] == 'E')
-            ESP_LOGD("otgw", "The processor was busy and failed to process all received characters");
         else
             return false;
 
         return true;
     }
 
-    bool set_room_setpoint(float temperature) {
-        char command[11];
-        sprintf(command, "TC=%2.2f\r\n", temperature);
-
-        write_str(command);
-        flush();
+    bool send_command(char const *command, char const *parameter) {
+        uint32_t retries = 0;
 
         do {
-            std::string const &line = readline();
-            if (line[0] == 'T' && line[1] == 'T')
-                return true;   
-            if (is_error(line))
-                return false;
-        } while(available());
+            write_str(command);
+            write_str("=");
+            write_str(parameter);
+            write_str("\r\n");
+            flush();
 
-        return true;
+            do {
+                std::string const &line = readline();
+                if (line[0] == command[0] && line[1] == command[1])
+                    return true;   
+
+                if (is_busy(line))
+                    break;
+
+                if (is_error(line))
+                    return false;
+            } while(available());
+
+        } while(retries++ < 5);
+
+        return false;
+    }
+
+    bool set_room_setpoint(float temperature) {
+        char parameter[6];
+        sprintf(parameter, "%2.2f", temperature);
+
+        return send_command("TC", parameter);
     }
 };
 
