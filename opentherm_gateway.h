@@ -354,6 +354,17 @@ public:
 
         return send_command("TC", parameter);
     }
+    
+    bool set_central_heating_setpoint(float temperature) {
+        char parameter[6];
+        sprintf(parameter, "%2.2f", temperature);
+
+        return send_command("CS", parameter);
+    }
+
+    bool disable_central_heating() {
+        return send_command("CH", "0");
+    }
 };
 
 #endif
