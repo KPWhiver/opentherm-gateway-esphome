@@ -5,6 +5,7 @@ esphome:
   includes:
   - opentherm_gateway.h
   - opentherm_gateway_thermostat.h
+  - opentherm_gateway_onoff.h
 
 wifi:
   ssid: "*25*"
@@ -40,6 +41,19 @@ custom_component:
     auto opentherm_gateway = new OpenthermGateway(id(uart_bus));
     return {opentherm_gateway};
   id: opentherm_gateway_uart
+
+text_sensor:
+- platform: custom
+  lambda: |-
+    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
+    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
+    return {
+      opentherm_gateway->s_heater_state,
+      opentherm_gateway->s_last_command
+    };
+  text_sensors:
+  - name: "Heater state"
+  - name: "Last command"
 
 binary_sensor:
 - platform: custom
@@ -235,6 +249,17 @@ sensor:
   - name: "Hot Water Burner Operation Time"
     unit_of_measurement: "h"
 
+switch:
+- platform: custom
+  lambda: |-
+    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
+    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
+    auto opentherm_gateway_onoff = new OpenthermGatewayOnoff(opentherm_gateway);
+    return {opentherm_gateway_onoff};
+  switches:
+  - name: "Heating"
+
+
 climate:
 - platform: custom
   lambda: |-
@@ -242,6 +267,5 @@ climate:
     auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
     auto opentherm_gateway_thermostat = new OpenthermGatewayThermostat(opentherm_gateway);
     return {opentherm_gateway_thermostat};
-
   climates:
   - name: "Thermostat"

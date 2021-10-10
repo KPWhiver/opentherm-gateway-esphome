@@ -7,39 +7,23 @@
 
 class OpenthermGateway : public Component, public UARTDevice {
 
-    std::string const &readline() {
-        static uint32_t buffer_size = 128;
-        static std::string buffer;
-        buffer.clear();
-        buffer.reserve(buffer_size);
+    unsigned long _time_of_last_circuit_change = 0;
 
-        while (true) {
-            char c = read();
-            if (c <= 0 || c == '\r') // ignore
-                continue;
+    bool _secondary_heating = false;
+    esphome::optional<float> _primary_heating;
+    bool _primary_heating_override = false;
 
-            if (c == '\n') { // stop
-                return buffer;
-            }
-
-            if (buffer.size() < buffer_size)
-                buffer += c;
-        }
-    }
-
-    float parse_float(uint16_t data) {
-        return ((data & 0x8000) ? -(0x10000L - data) : data) / 256.0f;
-    }
-
-    int16_t parse_int16(uint16_t data) {
-        return *reinterpret_cast<int16_t*>(&data);
-    }
-
-    int8_t parse_int8(uint8_t data) {
-        return *reinterpret_cast<int8_t*>(&data);
-    }
+    enum class HeatingCircuit {
+        PRIMARY,
+        SECONDARY,
+        NONE
+    };
+    HeatingCircuit _active_heating_circuit = HeatingCircuit::PRIMARY;
 
 public:
+    TextSensor *s_heater_state = new TextSensor();
+    TextSensor *s_last_command = new TextSensor();
+
     // Master state
     BinarySensor *s_master_central_heating_1 = new BinarySensor();
     BinarySensor *s_master_water_heating = new BinarySensor();
@@ -107,6 +91,105 @@ public:
     Sensor *s_hot_water_pump_operation_hours = new Sensor();
     Sensor *s_hot_Water_burner_operation_hours = new Sensor();
 
+private:
+    std::string const &readline() {
+        static uint32_t buffer_size = 128;
+        static std::string buffer;
+        buffer.clear();
+        buffer.reserve(buffer_size);
+
+        while (true) {
+            char c = read();
+            if (c <= 0 || c == '\r') // ignore
+                continue;
+
+            if (c == '\n') { // stop
+                return buffer;
+            }
+
+            if (buffer.size() < buffer_size)
+                buffer += c;
+        }
+    }
+
+    float parse_float(uint16_t data) {
+        return ((data & 0x8000) ? -(0x10000L - data) : data) / 256.0f;
+    }
+
+    int16_t parse_int16(uint16_t data) {
+        return *reinterpret_cast<int16_t*>(&data);
+    }
+
+    int8_t parse_int8(uint8_t data) {
+        return *reinterpret_cast<int8_t*>(&data);
+    }
+
+    bool is_busy(char first, char second) {
+        if (first == 'O' && second == 'E')
+            ESP_LOGD("otgw", "The processor was busy and failed to process all received characters");
+        else
+            return false;
+
+        return true;
+    }
+
+    bool is_error(char first, char second) {
+        if (first == 'N' && second == 'G')
+            ESP_LOGD("otgw", "The command code is unknown.");
+        else if (first == 'S' && second == 'E')
+            ESP_LOGD("otgw", "The command contained an unexpected character or was incomplete.");
+        else if (first == 'B' && second == 'V')
+            ESP_LOGD("otgw", "The command contained a data value that is not allowed.");
+        else if (first == 'O' && second == 'R')
+            ESP_LOGD("otgw", "A number was specified outside of the allowed range.");
+        else if (first == 'N' && second == 'S')
+            ESP_LOGD("otgw", "The alternative Data-ID could not be added because the table is full.");
+        else if (first == 'N' && second == 'F')
+            ESP_LOGD("otgw", "The specified alternative Data-ID could not be removed because it does not exist in the table.");
+        else
+            return false;
+
+        return true;
+    }
+
+    bool send_command(char const *command, char const *parameter) {
+        uint32_t retries = 0;
+
+        do {
+            write_str(command);
+            write_str("=");
+            write_str(parameter);
+            write_str("\r\n");
+            flush();
+
+            do {
+                std::string const &line = readline();
+                ESP_LOGD("otgw", "%s", line.c_str());
+
+                if (is_busy(line[0], line[1]))
+                    break;
+
+                if (is_busy(line[3], line[4]))
+                    break;
+
+                if (is_error(line[0], line[1]))
+                    return false;
+
+                if (is_error(line[3], line[4]))
+                    return false;
+
+                if (line[0] == command[0] && line[1] == command[1]) {
+                    s_last_command->publish_state(std::string(command) + "=" + parameter);
+                    return true;
+                }
+            } while(available());
+
+        } while(retries++ < 5);
+
+        return false;
+    }
+
+public:
     OpenthermGateway(UARTComponent *parent) : UARTDevice(parent) {}
 
     void setup() override {
@@ -157,6 +240,9 @@ public:
 
             switch (data_type) {
                 case 0: {
+                    if (line[0] == 'A') // Fake response to thermostat
+                        break;
+
                     // Master state
                     std::bitset<8> master_bits(high_data);
                     s_master_central_heating_1->publish_state(master_bits[0]);
@@ -167,13 +253,28 @@ public:
 
                     // Slave state
                     std::bitset<8> slave_bits(low_data);
+                    bool slave_central_heating = slave_bits[1];
+                    bool slave_water_heating = slave_bits[2];
                     s_slave_fault->publish_state(slave_bits[0]);
-                    s_slave_central_heating_1->publish_state(slave_bits[1]);
-                    s_slave_water_heating->publish_state(slave_bits[2]);
+                    s_slave_central_heating_1->publish_state(slave_central_heating);
+                    s_slave_water_heating->publish_state(slave_water_heating);
                     s_slave_flame->publish_state(slave_bits[3]);
                     s_slave_cooling->publish_state(slave_bits[4]);
                     s_slave_central_heating_2->publish_state(slave_bits[5]);
                     s_slave_diagnostic_event->publish_state(slave_bits[6]);
+
+                    if (slave_water_heating) {
+                        s_heater_state->publish_state("tap water");
+                    } else if (slave_central_heating) {
+                        if (_active_heating_circuit == HeatingCircuit::PRIMARY) {
+                            s_heater_state->publish_state("primary central heating");
+                        } else {
+                            s_heater_state->publish_state("secondary central heating");
+                        }
+                    } else {
+                        s_heater_state->publish_state("idle");
+                    }
+
                     break;
                 }
                 // Faults
@@ -192,6 +293,9 @@ public:
                     s_max_central_heating_setpoint->publish_state(parse_float(data));
                     break;
                 case 1:
+                    if (line[0] == 'T' && (_primary_heating_override || _active_heating_circuit != HeatingCircuit::PRIMARY))
+                        break;
+
                     s_central_heating_setpoint_1->publish_state(parse_float(data));
                     break;
                 case 8:
@@ -291,61 +395,61 @@ public:
                     break;
             }
         }
+
+        update_heating();
     }
 
-    bool is_busy(std::string const &line) {
-        if (line[0] == 'O' && line[1] == 'E')
-            ESP_LOGD("otgw", "The processor was busy and failed to process all received characters");
-        else
-            return false;
+    bool update_heating() {
+        unsigned long current_time = millis();
+        if (current_time < _time_of_last_circuit_change) {
+            _time_of_last_circuit_change = 0;
+        }
+        bool force_change = current_time - _time_of_last_circuit_change > 900 * 1000;
+
+        bool primary_heating = !_primary_heating_override || _primary_heating;
+        bool secondary_heating = _secondary_heating;
+
+        // If no heating required, stop heating
+        if (_active_heating_circuit != HeatingCircuit::NONE && !secondary_heating && !primary_heating) {
+            bool success = send_command("SR", "0:0,0") && send_command("CS", "10.00") && send_command("CH", "0");
+            if (success) {
+                _active_heating_circuit = HeatingCircuit::NONE;
+                _time_of_last_circuit_change = current_time;
+            }
+            return success;
+        }
+
+        // If secondary heating required and not primary heating (or forced to change), heat secondary
+        if (_active_heating_circuit != HeatingCircuit::SECONDARY && secondary_heating && (force_change || !primary_heating)) {
+            bool success = send_command("SR", "0:0,0") && send_command("CS", "55.00") ;
+            if (success) {
+                _active_heating_circuit = HeatingCircuit::SECONDARY;
+                _time_of_last_circuit_change = current_time;
+            }
+            return success;
+
+        } 
+
+        // If primary heating required and not secondary heating (or forced to change), heat primary
+        if (_active_heating_circuit != HeatingCircuit::PRIMARY && primary_heating && (force_change || !secondary_heating)) {
+            bool success;
+
+            if (_primary_heating_override) {
+                char parameter[6];
+                sprintf(parameter, "%2.2f", *_primary_heating);
+                success = send_command("SR", "0:0,0") && send_command("CS", parameter);
+            } else {
+                success = send_command("CS", "0") && send_command("CR", "0");
+            }
+
+            if (success) {
+                _active_heating_circuit = HeatingCircuit::PRIMARY;
+                _time_of_last_circuit_change = current_time;
+            }
+            return success;
+        }
 
         return true;
-    }
-
-    bool is_error(std::string const &line) {
-        if (line[0] == 'N' && line[1] == 'G')
-            ESP_LOGD("otgw", "The command code is unknown.");
-        else if (line[0] == 'S' && line[1] == 'E')
-            ESP_LOGD("otgw", "The command contained an unexpected character or was incomplete.");
-        else if (line[0] == 'B' && line[1] == 'V')
-            ESP_LOGD("otgw", "The command contained a data value that is not allowed.");
-        else if (line[0] == 'O' && line[1] == 'R')
-            ESP_LOGD("otgw", "A number was specified outside of the allowed range.");
-        else if (line[0] == 'N' && line[1] == 'S')
-            ESP_LOGD("otgw", "The alternative Data-ID could not be added because the table is full.");
-        else if (line[0] == 'N' && line[1] == 'F')
-            ESP_LOGD("otgw", "The specified alternative Data-ID could not be removed because it does not exist in the table.");
-        else
-            return false;
-
-        return true;
-    }
-
-    bool send_command(char const *command, char const *parameter) {
-        uint32_t retries = 0;
-
-        do {
-            write_str(command);
-            write_str("=");
-            write_str(parameter);
-            write_str("\r\n");
-            flush();
-
-            do {
-                std::string const &line = readline();
-                if (line[0] == command[0] && line[1] == command[1])
-                    return true;   
-
-                if (is_busy(line))
-                    break;
-
-                if (is_error(line))
-                    return false;
-            } while(available());
-
-        } while(retries++ < 5);
-
-        return false;
     }
 
     bool set_room_setpoint(float temperature) {
@@ -354,16 +458,25 @@ public:
 
         return send_command("TC", parameter);
     }
-    
-    bool set_central_heating_setpoint(float temperature) {
-        char parameter[6];
-        sprintf(parameter, "%2.2f", temperature);
 
-        return send_command("CS", parameter);
+    bool set_secondary_heating(bool heat) {
+        _secondary_heating = heat;
+
+        return update_heating();
     }
 
-    bool disable_central_heating() {
-        return send_command("CH", "0");
+    bool set_primary_heating_override(esphome::optional<float> temperature) {
+        _primary_heating = temperature;
+        _primary_heating_override = true;
+
+        return update_heating();
+    }
+
+    bool disable_primary_heating_override() {
+        _primary_heating.reset();
+        _primary_heating_override = false;
+
+        return update_heating();
     }
 };
 

@@ -87,19 +87,17 @@ public:
         _central_heating_setpoint = esphome::clamp(_central_heating_setpoint, _min_central_heating_setpoint, _max_central_heating_setpoint);
 
         // Check if the setpoint will soon drop below the min value, in which case: shut down
-        float actual_central_heating_setpoint = _central_heating_setpoint;
         if (central_heating_setpoint_change < 0 && _central_heating_setpoint - _min_central_heating_setpoint < std::abs(central_heating_setpoint_change)) {
-            actual_central_heating_setpoint = 10;   
             _central_heating_setpoint = _min_central_heating_setpoint;
-            bool success = _opentherm_gateway->send_command("CH", "0");
+            bool success = _opentherm_gateway->set_primary_heating_override(esphome::nullopt);
             if (!success) {
                 ESP_LOGD("otgw", "Failed to stop heating");
                 return;
             }
         }
 
-        ESP_LOGD("otgw", "Setpoint: %f", actual_central_heating_setpoint);
-        bool success = _opentherm_gateway->set_central_heating_setpoint(actual_central_heating_setpoint);
+        ESP_LOGD("otgw", "Setpoint: %f", _central_heating_setpoint);
+        bool success = _opentherm_gateway->set_primary_heating_override(_central_heating_setpoint);
         if (!success) {
             ESP_LOGD("otgw", "Failed to set the central heating setpoint");
             return;
@@ -111,7 +109,7 @@ public:
             auto new_mode = *call.get_mode();
 
             if (new_mode == ClimateMode::CLIMATE_MODE_OFF || new_mode == ClimateMode::CLIMATE_MODE_HEAT) {
-                _opentherm_gateway->set_central_heating_setpoint(0);
+                _opentherm_gateway->disable_primary_heating_override();
                 _time_of_last_temperature = 0;
                 _central_heating_setpoint = _start_central_heating_setpoint;
             }
