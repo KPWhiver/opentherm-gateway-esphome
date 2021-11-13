@@ -35,6 +35,9 @@ uart:
   tx_pin: GPIO1
   rx_pin: GPIO3
   baud_rate: 9600
+  data_bits: 8
+  stop_bits: 1
+  parity: NONE
 
 custom_component:
 - lambda: |-
