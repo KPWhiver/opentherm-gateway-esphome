@@ -45,6 +45,17 @@ custom_component:
     return {opentherm_gateway};
   id: opentherm_gateway_uart
 
+climate:
+- platform: custom
+  lambda: |-
+    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
+    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
+    auto opentherm_gateway_thermostat = new OpenthermGatewayThermostat(opentherm_gateway);
+    return {opentherm_gateway_thermostat};
+  id: opentherm_gateway_thermostat
+  climates:
+  - name: "Thermostat"
+
 text_sensor:
 - platform: custom
   lambda: |-
@@ -261,14 +272,3 @@ switch:
     return {opentherm_gateway_onoff};
   switches:
   - name: "Heating"
-
-
-climate:
-- platform: custom
-  lambda: |-
-    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
-    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
-    auto opentherm_gateway_thermostat = new OpenthermGatewayThermostat(opentherm_gateway);
-    return {opentherm_gateway_thermostat};
-  climates:
-  - name: "Thermostat"
