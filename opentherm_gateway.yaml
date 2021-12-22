@@ -5,7 +5,6 @@ esphome:
   includes:
   - opentherm_gateway.h
   - opentherm_gateway_thermostat.h
-  - opentherm_gateway_onoff.h
 
 wifi:
   ssid: "*25*"
@@ -264,11 +263,16 @@ sensor:
     unit_of_measurement: "h"
 
 switch:
-- platform: custom
-  lambda: |-
-    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
-    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
-    auto opentherm_gateway_onoff = new OpenthermGatewayOnoff(opentherm_gateway);
-    return {opentherm_gateway_onoff};
-  switches:
-  - name: "Heating"
+- platform: template
+  name: Heating
+  optimistic: true
+  turn_on_action:
+  - lambda: |-
+      auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
+      auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
+      opentherm_gateway->set_secondary_heating(true);
+  turn_off_action:
+  - lambda: |-
+      auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
+      auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
+      opentherm_gateway->set_secondary_heating(false);
