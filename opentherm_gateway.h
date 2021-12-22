@@ -240,10 +240,28 @@ public:
             uint8_t low_data = message & 0xFF;
 
             switch (message_type) {
+                // Master -> Slave (thermostat -> boiler)
+                case 0b0000: // READ
+                    continue;
                 case 0b0001: // WRITE
                     break;
+                case 0b0010: // INVALID-DATA
+                    ESP_LOGD("otgw", "MSG %d: invalid data", data_type);
+                    continue;
+                case 0b0011: // reserved
+                    continue;
+
+                // Slave -> Master (boiler -> thermostat)
                 case 0b0100: // READ-ACK
                     break;
+                case 0b0101: // WRITE-ACK
+                    continue;
+                case 0b0110: // DATA-INVALID
+                    ESP_LOGD("otgw", "MSG %d: data invalid", data_type);
+                    continue;
+                case 0b0111: // UNKNOWN-DATAID
+                    ESP_LOGD("otgw", "MSG %d: unknown dataid", data_type);
+                    continue;
                 default:
                     continue; // Does not contain interesting data
             }
@@ -402,6 +420,9 @@ public:
                     break;
                 case 123:
                     s_hot_Water_burner_operation_hours->publish_state(data);
+                    break;
+                default:
+                    ESP_LOGD("otgw", "Unknown data id: %s", line.c_str());
                     break;
             }
         }
