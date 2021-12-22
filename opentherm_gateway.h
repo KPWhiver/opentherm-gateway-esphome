@@ -169,13 +169,13 @@ private:
                 if (is_busy(line[0], line[1]))
                     break;
 
-                if (is_busy(line[3], line[4]))
+                if (is_busy(line[4], line[5]))
                     break;
 
                 if (is_error(line[0], line[1]))
                     return false;
 
-                if (is_error(line[3], line[4]))
+                if (is_error(line[4], line[5]))
                     return false;
 
                 if (line[0] == command[0] && line[1] == command[1]) {
