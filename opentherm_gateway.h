@@ -194,13 +194,17 @@ public:
 
     void setup() override {
         // Reset the PIC, useful when it is confused due to MCU serial weirdness during startup
-        GPIOPin pic_reset(D5, OUTPUT);
+        esphome::esp8266::ESP8266GPIOPin pic_reset;
+        pic_reset.set_pin(D5);
+        pic_reset.set_inverted(false);
+        pic_reset.set_flags(gpio::Flags::FLAG_OUTPUT);
+
         pic_reset.setup();
         pic_reset.digital_write(false);
         write_str("GW=R\r"); // prime for immediate sending
         delay(100);
         pic_reset.digital_write(true);
-        pic_reset.pin_mode(INPUT);
+        pic_reset.pin_mode(gpio::Flags::FLAG_INPUT);
     }
 
     void loop() override {
