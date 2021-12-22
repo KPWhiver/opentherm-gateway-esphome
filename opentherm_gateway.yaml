@@ -170,7 +170,12 @@ sensor:
       opentherm_gateway->s_central_heating_burner_operation_hours,
       opentherm_gateway->s_central_heating_pump_operation_hours,
       opentherm_gateway->s_hot_water_pump_operation_hours,
-      opentherm_gateway->s_hot_Water_burner_operation_hours
+      opentherm_gateway->s_hot_Water_burner_operation_hours,
+
+      // Thermostat
+      opentherm_gateway->s_average_temperature,
+      opentherm_gateway->s_average_temperature_change,
+      opentherm_gateway->s_predicted_temperature
     };
   sensors:
   # Setpoints
@@ -261,6 +266,36 @@ sensor:
     unit_of_measurement: "h"
   - name: "Hot Water Burner Operation Time"
     unit_of_measurement: "h"
+
+  # Thermostat
+  - name: "Average room temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Average room temperature change"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+  - name: "Predicted room temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+
+
+number:
+- platform: template
+  name: Outside temperature
+  icon: "mdi:thermometer"
+  entity_category: config
+  unit_of_measurement: "°C"
+  optimistic: true
+  min_value: -100.0
+  max_value: 100.0
+  step: 0.1
+  initial_value: 0.0
+  set_action:
+  - lambda: |-
+      auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
+      auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
+      opentherm_gateway->set_outside_temperature(x);
+
 
 switch:
 - platform: template

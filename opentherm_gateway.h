@@ -8,6 +8,7 @@
 class OpenthermGateway : public Component, public UARTDevice {
 
     unsigned long _time_of_last_circuit_change = 0;
+    bool _circuit_change_forced = false;
 
     bool _secondary_heating = false;
     esphome::optional<float> _primary_heating;
@@ -90,6 +91,11 @@ public:
     Sensor *s_central_heating_pump_operation_hours = new Sensor();
     Sensor *s_hot_water_pump_operation_hours = new Sensor();
     Sensor *s_hot_Water_burner_operation_hours = new Sensor();
+
+    // Thermostat
+    Sensor *s_average_temperature = new Sensor();
+    Sensor *s_average_temperature_change = new Sensor();
+    Sensor *s_predicted_temperature = new Sensor();
 
 private:
     std::string const &readline() {
@@ -400,7 +406,15 @@ public:
             }
         }
 
-        update_heating();
+        unsigned long current_time = millis();
+        if (current_time < _time_of_last_circuit_change) {
+            _time_of_last_circuit_change = 0;
+        }
+        bool force_change = current_time - _time_of_last_circuit_change > 900 * 1000;
+        if (force_change && !_circuit_change_forced) {
+            _circuit_change_forced = true;
+            update_heating();
+        }
     }
 
     bool update_heating() {
@@ -415,40 +429,43 @@ public:
 
         // If no heating required, stop heating
         if (_active_heating_circuit != HeatingCircuit::NONE && !secondary_heating && !primary_heating) {
-            bool success = send_command("SR", "0:0,0") && send_command("CS", "10.00") && send_command("CH", "0");
+            bool success = send_command("CS", "10.00") && send_command("CH", "0");
             if (success) {
                 _active_heating_circuit = HeatingCircuit::NONE;
                 _time_of_last_circuit_change = current_time;
+                _circuit_change_forced = false;
             }
             return success;
         }
 
         // If secondary heating required and not primary heating (or forced to change), heat secondary
         if (_active_heating_circuit != HeatingCircuit::SECONDARY && secondary_heating && (force_change || !primary_heating)) {
-            bool success = send_command("SR", "0:0,0") && send_command("CS", "55.00") ;
+            bool success = send_command("CS", "55.00") && send_command("CH", "1");
             if (success) {
                 _active_heating_circuit = HeatingCircuit::SECONDARY;
                 _time_of_last_circuit_change = current_time;
+                _circuit_change_forced = false;
             }
             return success;
 
         } 
 
         // If primary heating required and not secondary heating (or forced to change), heat primary
-        if (_active_heating_circuit != HeatingCircuit::PRIMARY && primary_heating && (force_change || !secondary_heating)) {
+        if (primary_heating && (force_change || !secondary_heating)) {
             bool success;
 
             if (_primary_heating_override) {
                 char parameter[6];
                 sprintf(parameter, "%2.2f", *_primary_heating);
-                success = send_command("SR", "0:0,0") && send_command("CS", parameter);
+                success = send_command("CS", parameter) && send_command("CH", "1");
             } else {
-                success = send_command("CS", "0") && send_command("CR", "0");
+                success = send_command("CS", "0");
             }
 
-            if (success) {
+            if (success && _active_heating_circuit != HeatingCircuit::PRIMARY) {
                 _active_heating_circuit = HeatingCircuit::PRIMARY;
                 _time_of_last_circuit_change = current_time;
+                _circuit_change_forced = false;
             }
             return success;
         }
@@ -461,6 +478,10 @@ public:
         sprintf(parameter, "%2.2f", temperature);
 
         return send_command("TC", parameter);
+    }
+
+    void set_outside_temperature(float temperature) {
+        s_outside_temperature->publish_state(temperature);
     }
 
     bool set_secondary_heating(bool heat) {
