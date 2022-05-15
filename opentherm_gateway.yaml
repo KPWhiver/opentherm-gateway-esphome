@@ -125,6 +125,10 @@ binary_sensor:
   - name: "Water Overtemperature"
 
 sensor:
+- platform: wifi_signal
+  name: "WiFi signal"
+  update_interval: 60s
+  entity_category: diagnostic
 - platform: custom
   lambda: |-
     auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));

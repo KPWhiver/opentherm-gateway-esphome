@@ -30,6 +30,9 @@ public:
     OpenthermGatewayThermostat(OpenthermGateway *opentherm_gateway) :
         _opentherm_gateway(opentherm_gateway) {
 
+        // Initial state
+        this->target_temperature = 20;
+
         this->mode = ClimateMode::CLIMATE_MODE_HEAT;
         this->publish_state();
 
@@ -47,9 +50,6 @@ public:
         });
         _opentherm_gateway->s_outside_temperature->add_on_state_callback([=](float outside_temperature) {
             _outside_temperature = outside_temperature;
-
-            unsigned long time_since_last_temperature = calculate_average_temperature_change();
-            this->calculate_central_heating_setpoint(time_since_last_temperature);
         });
     }
 
@@ -99,22 +99,24 @@ public:
         float predicted_temperature_error = this->target_temperature - _predicted_temperature;
 
         // Calculate the new setpoint
-        if (_predicted_temperature < this->target_temperature) {
+        if (this->mode == ClimateMode::CLIMATE_MODE_OFF) {
+            _central_heating_setpoint = esphome::nullopt;
+            this->action = ClimateAction::CLIMATE_ACTION_OFF;
+        } else if (_predicted_temperature < this->target_temperature) {
             float outside_inside_temperature_difference = max(this->target_temperature - _outside_temperature, 0.0f);
             _central_heating_setpoint = min(_min_central_heating_setpoint + outside_inside_temperature_difference, _max_central_heating_setpoint);
-        } else
+            this->action = ClimateAction::CLIMATE_ACTION_HEATING;
+        } else {
             _central_heating_setpoint = esphome::nullopt;
-
-        bool success = _opentherm_gateway->set_primary_heating_override(_central_heating_setpoint);
-        if (!success) {
-            ESP_LOGD("otgw", "Failed to set the central heating setpoint");
-            return;
+            this->action = ClimateAction::CLIMATE_ACTION_IDLE;
         }
+
+        _opentherm_gateway->set_primary_heating_override(_central_heating_setpoint);
+        this->publish_state();
     }
 
     void control(ClimateCall const &call) override {
         if (call.get_mode().has_value()) {
-            // Turning off is not supported
             this->mode = *call.get_mode();
             this->publish_state();
         }
@@ -134,7 +136,8 @@ public:
     ClimateTraits traits() override {
         auto traits = climate::ClimateTraits();
         traits.set_supports_current_temperature(true);
-        traits.set_supported_modes({esphome::climate::CLIMATE_MODE_HEAT});
+        traits.set_supported_modes({esphome::climate::CLIMATE_MODE_OFF, esphome::climate::CLIMATE_MODE_HEAT});
+        traits.set_supports_action(true);
         traits.set_visual_min_temperature(0);
         traits.set_visual_max_temperature(30);
         traits.set_visual_temperature_step(0.01);
