@@ -450,7 +450,7 @@ public:
                     s_hot_Water_burner_operation_hours->publish_state(data);
                     break;
                 default:
-                    ESP_LOGD("otgw", "Unknown data id: %s", line.c_str());
+                    ESP_LOGD("otgw", "Unknown data id: %d (%s)", data_type, line.c_str());
                     break;
             }
         }
@@ -458,6 +458,8 @@ public:
 
     bool update_heating() {
         unsigned long current_time = millis();
+
+        // Check if the clock has overrun, in which case reset it`
         if (current_time < _time_of_last_request) {
             _time_of_last_request = current_time;
             return false;
@@ -466,27 +468,30 @@ public:
         unsigned long time_since_last_request = current_time - _time_of_last_request;
         unsigned long const minute = 60000;
         bool currently_heating = _active_heating_circuit == HeatingCircuit::PRIMARY || _active_heating_circuit == HeatingCircuit::SECONDARY;
-        
 
         if (_active_heating_circuit != _requested_heating_circuit) { // Waiting for request to be honoured
-            if (time_since_last_request < minute) { // Don't wait longer than a minute to try again
+            // Check if we did a request less than a minute ago, in which case don't repeat it yet
+            if (time_since_last_request < minute) {
                 ESP_LOGD("otgw", "Waiting for confirmation");
                 return false;
             }
         } else if (currently_heating) {
-            if (time_since_last_request < 5 * minute) { // Heat for at least 5 minutes
+            // Heat for at least 5 minutes
+            if (time_since_last_request < 5 * minute) {
                 ESP_LOGD("otgw", "Waiting for timeout");
                 return false;
             }
-            if (_flame || _water_temperature > _requested_temperature || _water_temperature_change >= 0) { // Active heating cycle
-                ESP_LOGD("otgw", "Waiting for heating finishing");
+
+            // Don't stop heating if we are in a heating cycle and it hasn't been 15 minutes yet
+            if ((_flame || _water_temperature > _requested_temperature) && time_since_last_request < 15 * minute) {
+                ESP_LOGD("otgw", "Waiting for heating cycle to finish");
                 return false;
             }
         }
 
         bool success = false;
-        bool primary_heating_requested = (_primary_heating_override && _primary_heating_requested) || 
-                                         (!_primary_heating_override && _thermostat_heating_requested); 
+        bool primary_heating_requested = (_primary_heating_override && _primary_heating_requested) ||
+                                         (!_primary_heating_override && _thermostat_heating_requested);
         if (_secondary_heating_requested && !primary_heating_requested) {
             success = send_command("CS", "55.00") && send_command("CH", "1");
             if (success) {

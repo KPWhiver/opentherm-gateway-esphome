@@ -43,8 +43,8 @@ public:
         _opentherm_gateway->s_room_temperature->add_on_state_callback([=](float room_temperature) {
             this->current_temperature = room_temperature;
 
-            unsigned long time_since_last_temperature = calculate_average_temperature_change();
-            this->calculate_central_heating_setpoint(time_since_last_temperature);
+            calculate_average_temperature_change();
+            this->calculate_central_heating_setpoint();
 
             this->publish_state();
         });
@@ -56,7 +56,7 @@ public:
     void setup() override {
     }
 
-    unsigned long calculate_average_temperature_change() {
+    void calculate_average_temperature_change() {
         // Insert temperature into history
         if (!_oldest_temperature_index) {
             _temperature_history.fill(this->current_temperature);
@@ -89,22 +89,15 @@ public:
         float time_factor = _lookahead_time_ms / float(time_since_last_temperature);
         _predicted_temperature = *_average_temperature + time_factor * _average_temperature_change;
         _opentherm_gateway->s_predicted_temperature->publish_state(_predicted_temperature);
-
-        return time_since_last_temperature;
     }
 
-    void calculate_central_heating_setpoint(unsigned long time_since_last_temperature) {
-        // Predict the temperature error
-        float time_factor = _lookahead_time_ms / float(time_since_last_temperature);
-        float predicted_temperature_error = this->target_temperature - _predicted_temperature;
-
+    void calculate_central_heating_setpoint() {
         // Calculate the new setpoint
         if (this->mode == ClimateMode::CLIMATE_MODE_OFF) {
             _central_heating_setpoint = esphome::nullopt;
             this->action = ClimateAction::CLIMATE_ACTION_OFF;
         } else if (_predicted_temperature < this->target_temperature) {
-            float outside_inside_temperature_difference = max(this->target_temperature - _outside_temperature, 0.0f);
-            _central_heating_setpoint = min(_min_central_heating_setpoint + outside_inside_temperature_difference, _max_central_heating_setpoint);
+            _central_heating_setpoint = _max_central_heating_setpoint;
             this->action = ClimateAction::CLIMATE_ACTION_HEATING;
         } else {
             _central_heating_setpoint = esphome::nullopt;
