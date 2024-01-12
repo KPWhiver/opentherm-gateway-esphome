@@ -8,7 +8,7 @@ esphome:
 
 wifi:
   reboot_timeout: 60min
-  ssid: "*25*"
+  ssid: "*IOT*"
   password: !secret wifipass
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
