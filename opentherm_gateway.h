@@ -206,7 +206,7 @@ public:
     OpenthermGateway(UARTComponent *parent) : UARTDevice(parent) {}
 
     void setup() override {
-        // Reset the PIC, useful when it is confused due to MCU serial weirdness during startup
+        // Reset the PIC, useful when it is confused due to serial weirdness during startup
         esphome::esp8266::ESP8266GPIOPin pic_reset;
         pic_reset.set_pin(D5);
         pic_reset.set_inverted(false);

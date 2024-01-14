@@ -1,7 +1,7 @@
 esphome:
-  name: opentherm_gateway
+  name: opentherm-gateway
   platform: ESP8266
-  board: nodemcuv2
+  board: d1_mini
   includes:
   - opentherm_gateway.h
   - opentherm_gateway_thermostat.h
@@ -29,6 +29,12 @@ api:
   reboot_timeout: 60min
 
 ota:
+
+#i2c:
+#  id: i2c_bus
+#  sda: GPIO4
+#  scl: GPIO5
+#  scan: true
 
 uart:
   id: uart_bus
