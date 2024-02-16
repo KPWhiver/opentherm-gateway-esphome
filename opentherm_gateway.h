@@ -7,8 +7,6 @@
 
 class OpenthermGateway : public Component, public UARTDevice {
 
-    unsigned long _time_of_last_request = 0;
-
     bool _thermostat_heating_requested = false;
     bool _secondary_heating_requested = false;
     esphome::optional<float> _primary_heating_requested;
@@ -18,7 +16,6 @@ class OpenthermGateway : public Component, public UARTDevice {
     bool _flame = false;
     float _water_temperature = 0;
     float _water_temperature_change = 0;
-    float _requested_temperature = 10;
     enum class HeatingCircuit {
         PRIMARY,
         SECONDARY,
@@ -177,6 +174,7 @@ private:
 
             do {
                 std::string const &line = readline();
+                s_last_command->publish_state(std::string(command) + "=" + parameter + " | " + line);
                 ESP_LOGD("otgw", "%s", line.c_str());
 
                 if (is_busy(line[0], line[1]))
@@ -192,7 +190,6 @@ private:
                     return false;
 
                 if (line[0] == command[0] && line[1] == command[1]) {
-                    s_last_command->publish_state(std::string(command) + "=" + parameter);
                     return true;
                 }
             } while(available());
@@ -340,13 +337,14 @@ public:
                 case 57:
                     s_max_central_heating_setpoint->publish_state(parse_float(data));
                     break;
-                case 1:
-                    if (line[0] == 'T' && (_primary_heating_override || _active_heating_circuit != HeatingCircuit::PRIMARY))
+                case 1: {
+                    float requested_temperature = parse_float(data);
+                    if (line[0] == 'T' && (_primary_heating_override || _active_heating_circuit == HeatingCircuit::SECONDARY))
                         break;
 
-                    _requested_temperature = parse_float(data);
-                    s_central_heating_setpoint_1->publish_state(_requested_temperature);
+                    s_central_heating_setpoint_1->publish_state(requested_temperature);
                     break;
+                }
                 case 8:
                     s_central_heating_setpoint_2->publish_state(parse_float(data));
                     break;
@@ -370,8 +368,6 @@ public:
                     _water_temperature = new_water_temperature;
 
                     s_central_heating_temperature->publish_state(new_water_temperature);
-
-                    update_heating();
                     break;
                 }
                 case 26:
@@ -456,76 +452,20 @@ public:
         }
     }
 
-    bool update_heating() {
-        unsigned long current_time = millis();
-
-        // Check if the clock has overrun, in which case reset it`
-        if (current_time < _time_of_last_request) {
-            _time_of_last_request = current_time;
-            return false;
-        }
-
-        unsigned long time_since_last_request = current_time - _time_of_last_request;
-        unsigned long const minute = 60000;
-        bool currently_heating = _active_heating_circuit == HeatingCircuit::PRIMARY || _active_heating_circuit == HeatingCircuit::SECONDARY;
-
-        if (_active_heating_circuit != _requested_heating_circuit) { // Waiting for request to be honoured
-            // Check if we did a request less than a minute ago, in which case don't repeat it yet
-            if (time_since_last_request < minute) {
-                ESP_LOGD("otgw", "Waiting for confirmation");
-                return false;
-            }
-        } else if (currently_heating) {
-            // Heat for at least 5 minutes
-            if (time_since_last_request < 5 * minute) {
-                ESP_LOGD("otgw", "Waiting for timeout");
-                return false;
-            }
-
-            // Don't stop heating if we are in a heating cycle and it hasn't been 15 minutes yet
-            if ((_flame || _water_temperature > _requested_temperature) && time_since_last_request < 15 * minute) {
-                ESP_LOGD("otgw", "Waiting for heating cycle to finish");
-                return false;
-            }
-        }
-
-        bool success = false;
+    void update_heating() {
         bool primary_heating_requested = (_primary_heating_override && _primary_heating_requested) ||
                                          (!_primary_heating_override && _thermostat_heating_requested);
         if (_secondary_heating_requested && !primary_heating_requested) {
-            success = send_command("CS", "55.00") && send_command("CH", "1");
-            if (success) {
-                _requested_temperature = 55;
-                _requested_heating_circuit = HeatingCircuit::SECONDARY;
-            }
+            send_command("CS", "55.00") && send_command("CH", "1"); // SECONDARY
         } else if (!_primary_heating_override) {
-            success = send_command("CS", "0");
-            if (success) {
-                _requested_temperature = 55;
-                _requested_heating_circuit = HeatingCircuit::PRIMARY;
-            }
-            return success;
+            send_command("CS", "0"); // PRIMARY
         } else if (_primary_heating_requested) {
             char parameter[6];
             sprintf(parameter, "%2.2f", *_primary_heating_requested);
-            success = send_command("CS", parameter) && send_command("CH", "1");
-            if (success) {
-                _requested_temperature = *_primary_heating_requested;
-                _requested_heating_circuit = HeatingCircuit::PRIMARY;
-            }
-        } else if (_active_heating_circuit != HeatingCircuit::NONE) {
-            success = send_command("CS", "10.00") && send_command("CH", "0");
-            if (success) {
-                _requested_temperature = 10;
-                _requested_heating_circuit = HeatingCircuit::NONE;
-            }
+            send_command("CS", parameter) && send_command("CH", "1"); // PRIMARY (OVERRIDE)
+        } else {
+            send_command("CS", "5.00") && send_command("CH", "0"); // NONE
         }
-
-        if (success) {
-            _time_of_last_request = current_time;
-        }
-
-        return success;
     }
 
     bool set_room_setpoint(float temperature) {
@@ -539,24 +479,24 @@ public:
         s_outside_temperature->publish_state(temperature);
     }
 
-    bool set_secondary_heating(bool heat) {
+    void set_secondary_heating(bool heat) {
         _secondary_heating_requested = heat;
 
-        return update_heating();
+        update_heating();
     }
 
-    bool set_primary_heating_override(esphome::optional<float> temperature) {
+    void set_primary_heating_override(esphome::optional<float> temperature) {
         _primary_heating_requested = temperature;
         _primary_heating_override = true;
 
-        return update_heating();
+        update_heating();
     }
 
-    bool disable_primary_heating_override() {
+    void disable_primary_heating_override() {
         _primary_heating_requested.reset();
         _primary_heating_override = false;
 
-        return update_heating();
+        update_heating();
     }
 };
 

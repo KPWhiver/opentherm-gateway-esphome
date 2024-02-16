@@ -32,9 +32,12 @@ ota:
 
 #i2c:
 #  id: i2c_bus
-#  sda: GPIO4
-#  scl: GPIO5
+#  sda: GPIO4 #D2
+#  scl: GPIO5 #D1
 #  scan: true
+
+dallas:
+- pin: D0
 
 uart:
   id: uart_bus
@@ -56,7 +59,8 @@ climate:
   lambda: |-
     auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
     auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
-    auto opentherm_gateway_thermostat = new OpenthermGatewayThermostat(opentherm_gateway);
+
+    auto opentherm_gateway_thermostat = new OpenthermGatewayThermostat(opentherm_gateway, id(external_return_temperature));
     return {opentherm_gateway_thermostat};
   id: opentherm_gateway_thermostat
   climates:
@@ -131,6 +135,10 @@ binary_sensor:
   - name: "Water Overtemperature"
 
 sensor:
+- platform: dallas
+  address: 0xc8012037360a1d28
+  name: "External return water temperature"
+  id: external_return_temperature
 - platform: wifi_signal
   name: "WiFi signal"
   update_interval: 60s
