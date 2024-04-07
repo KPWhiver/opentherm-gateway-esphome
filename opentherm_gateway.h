@@ -456,14 +456,18 @@ public:
         bool primary_heating_requested = (_primary_heating_override && _primary_heating_requested) ||
                                          (!_primary_heating_override && _thermostat_heating_requested);
         if (_secondary_heating_requested && !primary_heating_requested) {
+            _requested_heating_circuit = HeatingCircuit::SECONDARY;
             send_command("CS", "55.00") && send_command("CH", "1"); // SECONDARY
         } else if (!_primary_heating_override) {
+            _requested_heating_circuit = HeatingCircuit::PRIMARY;
             send_command("CS", "0"); // PRIMARY
         } else if (_primary_heating_requested) {
+            _requested_heating_circuit = HeatingCircuit::PRIMARY;
             char parameter[6];
             sprintf(parameter, "%2.2f", *_primary_heating_requested);
             send_command("CS", parameter) && send_command("CH", "1"); // PRIMARY (OVERRIDE)
         } else {
+            _requested_heating_circuit = HeatingCircuit::NONE;
             send_command("CS", "5.00") && send_command("CH", "0"); // NONE
         }
     }
