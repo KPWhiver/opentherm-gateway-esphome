@@ -2,9 +2,6 @@ esphome:
   name: opentherm-gateway
   platform: ESP8266
   board: d1_mini
-  includes:
-  - opentherm_gateway.h
-  - opentherm_gateway_thermostat.h
 
 wifi:
   reboot_timeout: 60min
@@ -30,6 +27,14 @@ api:
 
 ota:
 
+external_components:
+  - source:
+      type: local
+      path: components
+
+otgw:
+  override_thermostat: true
+
 #i2c:
 #  id: i2c_bus
 #  sda: GPIO4 #D2
@@ -48,93 +53,57 @@ uart:
   stop_bits: 1
   parity: NONE
 
-custom_component:
-- lambda: |-
-    auto opentherm_gateway = new OpenthermGateway(id(uart_bus));
-    return {opentherm_gateway};
-  id: opentherm_gateway_uart
-
-climate:
-- platform: custom
-  lambda: |-
-    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
-    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
-
-    auto opentherm_gateway_thermostat = new OpenthermGatewayThermostat(opentherm_gateway, id(external_return_temperature));
-    return {opentherm_gateway_thermostat};
-  id: opentherm_gateway_thermostat
-  climates:
-  - name: "Thermostat"
-
 text_sensor:
-- platform: custom
-  lambda: |-
-    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
-    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
-    return {
-      opentherm_gateway->s_heater_state,
-      opentherm_gateway->s_last_command
-    };
-  text_sensors:
-  - name: "Heater state"
-  - name: "Last command"
+- platform: otgw
+  heater_state:
+    name: "Heater state"
+  last_command:
+    name: "Last command"
 
 binary_sensor:
-- platform: custom
-  lambda: |-
-    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
-    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
-    return {
-      // Master state
-      opentherm_gateway->s_master_central_heating_1,
-      opentherm_gateway->s_master_water_heating,
-      opentherm_gateway->s_master_cooling,
-      opentherm_gateway->s_master_outside_temperature_compensation,
-      opentherm_gateway->s_master_central_heating_2,
+- platform: otgw
 
-      // Slave state
-      opentherm_gateway->s_slave_fault,
-      opentherm_gateway->s_slave_central_heating_1,
-      opentherm_gateway->s_slave_water_heating,
-      opentherm_gateway->s_slave_flame,
-      opentherm_gateway->s_slave_cooling,
-      opentherm_gateway->s_slave_central_heating_2,
-      opentherm_gateway->s_slave_diagnostic_event,
-
-      // Faults
-      opentherm_gateway->s_service_required,
-      opentherm_gateway->s_lockout_reset,
-      opentherm_gateway->s_low_water_pressure,
-      opentherm_gateway->s_gas_flame_fault,
-      opentherm_gateway->s_air_pressure_fault,
-      opentherm_gateway->s_water_overtemperature
-    };
-  binary_sensors:
   # Master state
-  - name: "Master Central Heating 1"
-  - name: "Master Water Heating"
-  - name: "Master Cooling"
-  - name: "Master Outside Temperature Compensation"
-  - name: "Master Central Heating 2"
+  master_central_heating_1:
+    name: "Master Central Heating"
+  master_water_heating:
+    name: "Master Water Heating"
+  master_outside_temperature_compensation:
+    name: "Master Outside Temperature Compensation"
 
   # Slave state
-  - name: "Slave Fault"
-  - name: "Slave Central Heating 1"
-  - name: "Slave Water Heating"
-  - name: "Slave Flame"
-  - name: "Slave Cooling"
-  - name: "Slave Central Heating 2"
-  - name: "Slave Diagnostic Event"
+  slave_fault:
+    name: "Slave Fault"
+  slave_central_heating_1:
+    name: "Slave Central Heating"
+  slave_water_heating:
+    name: "Slave Water Heating"
+  slave_flame:
+    name: "Slave Flame"
+    id: flame
+  slave_diagnostic_event:
+    name: "Slave Diagnostic Event"
 
   # Faults
-  - name: "Service Required"
-  - name: "Lockout Reset"
-  - name: "Low water Pressure"
-  - name: "Gas Flame Fault"
-  - name: "Air Pressure Fault"
-  - name: "Water Overtemperature"
+  service_required:
+    name: "Service Required"
+  lockout_reset:
+    name: "Lockout Reset"
+  low_water_pressure:
+    name: "Low water Pressure"
+  gas_flame_fault:
+    name: "Gas Flame Fault"
+  air_pressure_fault:
+    name: "Air Pressure Fault"
+  water_overtemperature:
+    name: "Water Overtemperature"
 
 sensor:
+- platform: homeassistant
+  name: "Office temperature"
+  entity_id: climate.office_radiator
+  attribute: local_temperature
+  id: office_temperature
 - platform: dallas
   address: 0xc8012037360a1d28
   name: "External return water temperature"
@@ -143,190 +112,133 @@ sensor:
   name: "WiFi signal"
   update_interval: 60s
   entity_category: diagnostic
-- platform: custom
-  lambda: |-
-    auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
-    auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
-    return {
-      // Setpoints
-      opentherm_gateway->s_max_central_heating_setpoint,
-      opentherm_gateway->s_central_heating_setpoint_1,
-      opentherm_gateway->s_central_heating_setpoint_2,
-      opentherm_gateway->s_hot_water_setpoint,
-      opentherm_gateway->s_remote_override_room_setpoint,
-      opentherm_gateway->s_room_setpoint_1,
-      opentherm_gateway->s_room_setpoint_2,
+- platform: otgw
 
-      // Temperatures
-      opentherm_gateway->s_central_heating_temperature,
-      opentherm_gateway->s_hot_water_1_temperature,
-      opentherm_gateway->s_hot_water_2_temperature,
-      opentherm_gateway->s_room_temperature,
-      opentherm_gateway->s_outside_temperature,
-      opentherm_gateway->s_return_water_temperature,
-      opentherm_gateway->s_solar_storage_temperature,
-      opentherm_gateway->s_solar_collector_temperature,
-      opentherm_gateway->s_central_heating_2_flow_water_temperature,
-      opentherm_gateway->s_exhaust_temperature,
-
-      // Modulation
-      opentherm_gateway->s_max_relative_modulation_level,
-      opentherm_gateway->s_max_boiler_capacity,
-      opentherm_gateway->s_min_modulation_level,
-      opentherm_gateway->s_relative_modulation_level,
-
-      // Water
-      opentherm_gateway->s_central_heating_water_pressure,
-      opentherm_gateway->s_hot_water_flow_rate,
-
-      // Starts
-      opentherm_gateway->s_central_heating_burner_starts,
-      opentherm_gateway->s_central_heating_pump_starts,
-      opentherm_gateway->s_hot_water_pump_starts,
-      opentherm_gateway->s_hot_water_burner_starts,
-
-      // Operation hours
-      opentherm_gateway->s_central_heating_burner_operation_hours,
-      opentherm_gateway->s_central_heating_pump_operation_hours,
-      opentherm_gateway->s_hot_water_pump_operation_hours,
-      opentherm_gateway->s_hot_Water_burner_operation_hours,
-
-      // Thermostat
-      opentherm_gateway->s_average_temperature,
-      opentherm_gateway->s_average_temperature_change,
-      opentherm_gateway->s_predicted_temperature
-    };
-  sensors:
   # Setpoints
-  - name: "Max Central Heating Setpoint"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Central Heating Setpoint 1"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Central Heating Setpoint 2"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Hot Water Setpoint"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Remote Override Room Setpoint"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Room Setpoint 1"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Room Setpoint 2"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
+  max_central_heating_setpoint:
+    name: "Max Central Heating Setpoint"
+  central_heating_setpoint_1:
+    name: "Central Heating Setpoint"
+  room_setpoint_1:
+    name: "Room Setpoint"
+    on_value:
+      then:
+        - lambda: |-
+            auto call = id(floor_heating_id).make_call();
+            call.set_target_temperature(x);
+            call.perform();
 
   # Temperatures
-  - name: "Central Heating Temperature"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Hot Water 1 Temperature"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Hot Water 2 Temperature"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Room Temperature"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Outside Temperature"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Return Water Temperature"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Solar Storage Temperature"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Solar Collector Temperature"
-    unit_of_measurement: "°C"
-  - name: "Central Heating 2 Flow Water Temperature"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Exhaust Temperature"
-    unit_of_measurement: "°C"
+  central_heating_temperature_1:
+    name: "Central Heating Temperature"
+    id: central_heating_temperature
+  hot_water_temperature_1:
+    name: "Hot Water Temperature"
+  room_temperature:
+    name: "Room Temperature"
+    id: room_temperature
+  outside_temperature:
+    name: "Outside Temperature"
+  return_water_temperature:
+    name: "Return Water Temperature"
 
   # Modulation
-  - name: "Max Relative Modulation Level"
-    unit_of_measurement: "%"
-    accuracy_decimals: 2
-  - name: "Max Boiler Capacity"
-    unit_of_measurement: "kWh"
-  - name: "Min Modulation Level"
-    unit_of_measurement: "%"
-  - name: "Relative Modulation Level"
-    unit_of_measurement: "%"
-    accuracy_decimals: 2
+  relative_modulation_level:
+    name: "Relative Modulation Level"
 
   # Water
-  - name: "Central Heating Water Pressure"
-    unit_of_measurement: "bar"
-    accuracy_decimals: 2
-  - name: "Hot Water Flow Rate"
-    unit_of_measurement: "litres/minute"
-    accuracy_decimals: 2
+  central_heating_water_pressure:
+    name: "Central Heating Water Pressure"
+  hot_water_flow_rate:
+    name: "Hot Water Flow Rate"
 
   # Starts
-  - name: "Central Heating Burner Starts"
-  - name: "Central Heating Pump Starts"
-  - name: "Hot Water Pump Starts"
-  - name: "Hot Water Burner Starts"
+  central_heating_burner_starts:
+    name: "Central Heating Burner Starts"
+  central_heating_pump_starts:
+    name: "Central Heating Pump Starts"
+  hot_water_burner_starts:
+    name: "Hot Water Pump Starts"
+  hot_water_pump_starts:
+    name: "Hot Water Burner Starts"
 
   # Operation hours
-  - name: "Central Heating Burner Operation Time"
-    unit_of_measurement: "h"
-  - name: "Central Heating Pump Operation Time"
-    unit_of_measurement: "h"
-  - name: "Hot Water Pump Operation Time"
-    unit_of_measurement: "h"
-  - name: "Hot Water Burner Operation Time"
-    unit_of_measurement: "h"
+  central_heating_burner_operation_time:
+    name: "Central Heating Burner Operation Time"
+  central_heating_pump_operation_time:
+    name: "Central Heating Pump Operation Time"
+  hot_water_pump_operation_time:
+    name: "Hot Water Pump Operation Time"
+  hot_water_burner_operation_time:
+    name: "Hot Water Burner Operation Time"
 
-  # Thermostat
-  - name: "Average room temperature"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Average room temperature change"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-  - name: "Predicted room temperature"
-    unit_of_measurement: "°C"
-    accuracy_decimals: 2
-
-
-number:
-- platform: template
-  name: Outside temperature
-  icon: "mdi:thermometer"
-  entity_category: config
-  unit_of_measurement: "°C"
-  optimistic: true
-  min_value: -100.0
-  max_value: 100.0
-  step: 0.1
-  initial_value: 0.0
-  set_action:
-  - lambda: |-
-      auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
-      auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
-      opentherm_gateway->set_outside_temperature(x);
-
-
-switch:
-- platform: template
-  name: Heating
-  optimistic: true
-  turn_on_action:
-  - lambda: |-
-      auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
-      auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
-      opentherm_gateway->set_secondary_heating(true);
-  turn_off_action:
-  - lambda: |-
-      auto component_constructor = const_cast<custom_component::CustomComponentConstructor*>(&id(opentherm_gateway_uart));
-      auto opentherm_gateway = reinterpret_cast<OpenthermGateway*>(component_constructor->get_component(0));
-      opentherm_gateway->set_secondary_heating(false);
+climate:
+  - platform: otgw
+    room_thermostat:
+      internal: true
+      id: room_thermostat
+      name: "Livingroom"
+    heating_circuit_1:
+      internal: true
+      id: heater_circuit
+      name: "Heating circuit"
+  - platform: thermostat
+    name: "Office"
+    id: office_thermostat
+    sensor: office_temperature
+    min_heating_off_time: 300s
+    min_heating_run_time: 300s
+    min_idle_time: 300s
+    heat_action:
+      - lambda: |-
+          if (id(floor_heating_id).action != climate::CLIMATE_ACTION_HEATING) {
+            auto call = id(heater_circuit).make_call();
+            call.set_target_temperature(55);
+            call.set_mode(climate::CLIMATE_MODE_HEAT);
+            call.perform();
+          }
+    idle_action:
+      - lambda: |-
+          if (id(floor_heating_id).action != climate::CLIMATE_ACTION_HEATING) {
+            auto call = id(heater_circuit).make_call();
+            call.set_target_temperature(0);
+            call.set_mode(climate::CLIMATE_MODE_OFF);
+            call.perform();
+          }
+    default_preset: Home
+    preset:
+      - name: Home
+        default_target_temperature_low: 20 °C
+  - platform: floor_heating
+    name: "Livingroom"
+    id: floor_heating_id
+    temperature: room_temperature
+    heater_temperature: central_heating_temperature
+    heater_active: flame
+    default_target_temperature: 18
+    max_heater_temperature_setpoint: 55
+    min_heater_temperature_setpoint: 25
+    heater_return_temperature: external_return_temperature
+    heat_action:
+      - lambda: |-
+          auto call = id(heater_circuit).make_call();
+          call.set_target_temperature(id(floor_heating_id).heater_temperature_setpoint());
+          call.set_mode(climate::CLIMATE_MODE_HEAT);
+          call.perform();
+    idle_action:
+      - lambda: |-
+          auto call = id(heater_circuit).make_call();
+          if (id(office_thermostat).action != climate::CLIMATE_ACTION_HEATING) {
+            call.set_target_temperature(0);
+            call.set_mode(climate::CLIMATE_MODE_OFF);
+          } else {
+            call.set_target_temperature(55);
+          }
+          call.perform();
+    on_control:
+      - lambda: |-
+          if (x.get_target_temperature().has_value()) {
+            auto call = id(room_thermostat).make_call();
+            call.set_target_temperature(x.get_target_temperature());
+            call.perform();
+          }
