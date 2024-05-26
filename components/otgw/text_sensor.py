@@ -3,6 +3,7 @@ import esphome.config_validation as cv
 from esphome.components import text_sensor
 from esphome.const import (
     CONF_ID,
+    ENTITY_CATEGORY_DIAGNOSTIC,
 )
 from . import OpenthermGateway, CONF_OTGW_ID
 
@@ -12,8 +13,12 @@ CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(CONF_OTGW_ID): cv.use_id(OpenthermGateway),
 
     # Master state
-    cv.Optional("heater_state"): text_sensor.text_sensor_schema(),
-    cv.Optional("last_command"): text_sensor.text_sensor_schema(),
+    cv.Optional("slave_opentherm_version"): text_sensor.text_sensor_schema(
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    cv.Optional("master_opentherm_version"): text_sensor.text_sensor_schema(
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
 })
 
 async def to_code(config):

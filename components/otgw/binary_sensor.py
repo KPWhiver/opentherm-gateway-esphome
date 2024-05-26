@@ -16,6 +16,8 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional("master_central_heating_2"): binary_sensor.binary_sensor_schema(),
     cv.Optional("master_water_heating"): binary_sensor.binary_sensor_schema(),
     cv.Optional("master_cooling"): binary_sensor.binary_sensor_schema(),
+    cv.Optional("master_water_heating_blocking"): binary_sensor.binary_sensor_schema(),
+    cv.Optional("master_summer_mode"): binary_sensor.binary_sensor_schema(),
     cv.Optional("master_outside_temperature_compensation"): binary_sensor.binary_sensor_schema(),
 
     # Slave state

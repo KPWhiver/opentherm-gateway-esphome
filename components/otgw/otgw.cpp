@@ -78,7 +78,6 @@ bool OpenthermGateway::send_command(char const *command, char const *parameter) 
 
         do {
             std::string const &line = readline();
-            this->last_command.publish_state(std::string(command) + "=" + parameter + " | " + line);
             ESP_LOGD("otgw", "%s", line.c_str());
 
             if (is_busy(line[0], line[1]))
@@ -183,11 +182,28 @@ void OpenthermGateway::loop() {
 
                 // Master state
                 std::bitset<8> master_bits(high_data);
-                this->master_central_heating_1.publish_state(master_bits[0]);
-                this->master_central_heating_2.publish_state(master_bits[4]);
-                this->master_water_heating.publish_state(master_bits[1]);
+
+                bool master_central_heating_1 = master_bits[0];
+                if (_room_thermostat != nullptr) {
+                    _room_thermostat->set_action(master_central_heating_1 ?
+                        climate::CLIMATE_ACTION_HEATING : climate::CLIMATE_ACTION_IDLE
+                    );
+                }
+
+                bool master_water_heating = master_bits[1];
+                if (_hot_water != nullptr) {
+                    _hot_water->set_mode(master_water_heating ?
+                        climate::CLIMATE_MODE_HEAT : climate::CLIMATE_MODE_OFF
+                    );
+                }
+
+                this->master_central_heating_1.publish_state(master_central_heating_1);
+                this->master_water_heating.publish_state(master_water_heating);
                 this->master_cooling.publish_state(master_bits[2]);
                 this->master_outside_temperature_compensation.publish_state(master_bits[3]);
+                this->master_central_heating_2.publish_state(master_bits[4]);
+                this->master_summer_mode.publish_state(master_bits[5]);
+                this->master_water_heating_blocking.publish_state(master_bits[6]);
 
                 // Slave state
                 std::bitset<8> slave_bits(low_data);
@@ -199,14 +215,35 @@ void OpenthermGateway::loop() {
                 bool central_heating_2 = slave_bits[5];
                 set_heating_circuit_action(_heating_circuit_2, slave_flame, central_heating_2);
 
-                this->slave_central_heating_1.publish_state(central_heating_1);
-                this->slave_central_heating_2.publish_state(central_heating_2);
+                bool water_heating = slave_bits[2];
+                if (_hot_water != nullptr) {
+                    _hot_water->set_action(calculate_climate_action(slave_flame, water_heating));
+                }
+
                 this->slave_fault.publish_state(slave_bits[0]);
-                this->slave_water_heating.publish_state(slave_bits[2]);
+                this->slave_central_heating_1.publish_state(central_heating_1);
+                this->slave_water_heating.publish_state(water_heating);
                 this->slave_flame.publish_state(slave_flame);
                 this->slave_cooling.publish_state(slave_bits[4]);
+                this->slave_central_heating_2.publish_state(central_heating_2);
                 this->slave_diagnostic_event.publish_state(slave_bits[6]);
                 break;
+            }
+            case 3: {
+                std::bitset<8> slave_configuration(high_data);
+                if (_room_thermostat != nullptr) {
+                    _room_thermostat->set_cooling_supported(slave_configuration[2]);
+                }
+
+                if (_hot_water != nullptr) {
+                    _hot_water->set_internal(!slave_configuration[0]);
+                }
+
+                bool modulation_supported = !slave_configuration[1];
+                bool hot_water_tank = slave_configuration[3];
+                if (_heating_circuit_2) {
+                    _heating_circuit_2->heating_circuit->set_internal(!slave_configuration[5]);
+                }
             }
             // Faults
             case 5: {
@@ -249,20 +286,26 @@ void OpenthermGateway::loop() {
                 }
                 break;
             }
-            case 56:
-                this->hot_water_setpoint.publish_state(parse_float(data));
+            case 56: {
+                float temperature = parse_float(data);
+                this->hot_water_setpoint.publish_state(temperature);
+
+                if (_hot_water != nullptr) {
+                    _hot_water->set_target_temperature(temperature);
+                }
                 break;
+            }
             case 9:
-                this->remote_override_room_setpoint.publish_state(parse_float(data));
+                if (line[0] != 'T') {
+                    this->remote_override_room_setpoint.publish_state(parse_float(data));
+                }
                 break;
             case 16: {
                 float temperature = parse_float(data);
                 this->room_setpoint_1.publish_state(temperature);
 
                 if (_room_thermostat != nullptr) {
-                    auto call = _room_thermostat->make_call();
-                    call.set_target_temperature(temperature);
-                    call.perform();
+                    _room_thermostat->set_target_temperature(temperature);
                 }
                 break;
             }
@@ -289,9 +332,15 @@ void OpenthermGateway::loop() {
                 }
                 break;
             }
-            case 26:
-                this->hot_water_temperature_1.publish_state(parse_float(data));
+            case 26: {
+                float temperature = parse_float(data);
+                this->hot_water_temperature_1.publish_state(temperature);
+
+                if (_hot_water != nullptr) {
+                    _hot_water->set_current_temperature(temperature);
+                }
                 break;
+            }
             case 32:
                 this->hot_water_temperature_2.publish_state(parse_float(data));
                 break;
@@ -367,6 +416,15 @@ void OpenthermGateway::loop() {
             case 123:
                 this->hot_water_burner_operation_time.publish_state(data);
                 break;
+
+            // Config
+            case 124:
+                this->master_opentherm_version.publish_state(std::to_string(parse_float(data)));
+                break;
+            case 125:
+                this->slave_opentherm_version.publish_state(std::to_string(parse_float(data)));
+                break;
+
             default:
                 ESP_LOGD("otgw", "Unknown data id: %d (%s)", data_type, line.c_str());
                 break;
@@ -398,9 +456,32 @@ bool OpenthermGateway::refresh_heating_circuit_setpoint(optional<HeatingCircuit>
 void OpenthermGateway::set_room_thermostat(OpenthermGatewayClimate* clim) {
     _room_thermostat = clim;
     _room_thermostat->set_callback([=](optional<float> state) {
-        set_room_setpoint(state.value_or(0.0f));
+        if (state) {
+            char parameter[6];
+            sprintf(parameter, "%2.2f", *state);
+
+            return send_command("TC", parameter);
+        }
+
+        return false;
     });
 }
+
+void OpenthermGateway::set_hot_water(OpenthermGatewayClimate* clim) {
+    _hot_water = clim;
+    _hot_water->set_callback([=](optional<float> state) {
+        if (state) {
+            char parameter[6];
+            sprintf(parameter, "%2.2f", *state);
+
+            return send_command("HW", "1") && send_command("SW", parameter);
+        } else {
+
+            return send_command("HW", "0");
+        }
+    });
+}
+
 void OpenthermGateway::set_heating_circuit_1(OpenthermGatewayClimate* clim) {
     _heating_circuit_1 = HeatingCircuit{
         0, clim, "CS", "CH"
@@ -410,6 +491,7 @@ void OpenthermGateway::set_heating_circuit_1(OpenthermGatewayClimate* clim) {
         set_heating_circuit_setpoint(*_heating_circuit_1, state);
     });
 }
+
 void OpenthermGateway::set_heating_circuit_2(OpenthermGatewayClimate* clim) {
     _heating_circuit_1 = HeatingCircuit{
         0, clim, "C2", "H2"
@@ -434,18 +516,27 @@ void OpenthermGateway::set_outside_temperature_override(sensor::Sensor* sens) {
     });
 }
 
-bool OpenthermGateway::set_room_setpoint(float temperature) {
-    char parameter[6];
-    sprintf(parameter, "%2.2f", temperature);
+void OpenthermGateway::set_time_source(time::RealTimeClock* time) {
+    _time_source = time;
+    _time_source->add_on_time_sync_callback([=]() {
+        auto now = _time_source->now();
 
-    return send_command("TC", parameter);
+        char parameter[12];
+        sprintf(parameter, "%02d:%02d/%d", now.hour, now.minute, now.day_of_week);
+
+        send_command("SC", parameter);
+    });
 }
 
 bool OpenthermGateway::set_heating_circuit_setpoint(HeatingCircuit& heating_circuit, optional<float> temperature) {
     heating_circuit.time_of_last_command = millis();
 
     if (!temperature) {
-        return send_command(heating_circuit.temp_command, "5.00") && send_command(heating_circuit.enable_command, "0"); // By setting to 5 the thermostat is ignored
+        if (_override_thermostat) {
+            return send_command(heating_circuit.temp_command, "5.00") && send_command(heating_circuit.enable_command, "0"); // By setting to 5 the thermostat is ignored
+        }
+
+        return send_command(heating_circuit.temp_command, "0");
     } else {
         char parameter[6];
         sprintf(parameter, "%2.2f", *temperature);
@@ -455,24 +546,27 @@ bool OpenthermGateway::set_heating_circuit_setpoint(HeatingCircuit& heating_circ
 
 bool OpenthermGateway::set_heating_circuit_target_temperature(optional<HeatingCircuit>& heating_circuit, float temperature) {
     if (heating_circuit) {
-        auto call = heating_circuit->heating_circuit->make_call();
-        call.set_target_temperature(temperature);
-        call.perform();
+        heating_circuit->heating_circuit->set_target_temperature(temperature);
         return true;
     }
     return false;
 }
 
+climate::ClimateAction OpenthermGateway::calculate_climate_action(bool flame, bool heating) {
+    climate::ClimateAction action;
+    if (!heating) {
+        action = climate::CLIMATE_ACTION_OFF;
+    } else if (flame) {
+        action = climate::CLIMATE_ACTION_HEATING;
+    } else {
+        action = climate::CLIMATE_ACTION_IDLE;
+    }
+    return action;
+}
+
 bool OpenthermGateway::set_heating_circuit_action(optional<HeatingCircuit>& heating_circuit, bool flame, bool heating) {
     if (heating_circuit) {
-        climate::ClimateAction action;
-        if (!heating) {
-            action = climate::CLIMATE_ACTION_OFF;
-        } else if (flame) {
-            action = climate::CLIMATE_ACTION_HEATING;
-        } else {
-            action = climate::CLIMATE_ACTION_IDLE;
-        }
+        auto action = calculate_climate_action(flame, heating);
         heating_circuit->heating_circuit->set_action(action);
         return true;
     }

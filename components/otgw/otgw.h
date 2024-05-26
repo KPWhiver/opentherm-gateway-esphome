@@ -3,12 +3,10 @@
 #include "climate.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/number/number.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/climate/climate.h"
-
-#include "temperature_number.h"
+#include "esphome/components/time/real_time_clock.h"
 
 #include <string>
 #include <bitset>
@@ -44,22 +42,26 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
 
     ///// Components /////
     OpenthermGatewayClimate* _room_thermostat{nullptr};
+    OpenthermGatewayClimate* _hot_water{nullptr};
     optional<HeatingCircuit> _heating_circuit_1;
     optional<HeatingCircuit> _heating_circuit_2;
 
     sensor::Sensor* _outside_temperature_override{nullptr};
+    time::RealTimeClock* _time_source{nullptr};
 
     bool _override_thermostat{false};
 
 public:
-    OptionalComponent<text_sensor::TextSensor> heater_state;
-    OptionalComponent<text_sensor::TextSensor> last_command;
+    OptionalComponent<text_sensor::TextSensor> slave_opentherm_version;
+    OptionalComponent<text_sensor::TextSensor> master_opentherm_version;
 
     // Master state
     OptionalComponent<binary_sensor::BinarySensor> master_central_heating_1;
     OptionalComponent<binary_sensor::BinarySensor> master_central_heating_2;
     OptionalComponent<binary_sensor::BinarySensor> master_water_heating;
     OptionalComponent<binary_sensor::BinarySensor> master_cooling;
+    OptionalComponent<binary_sensor::BinarySensor> master_water_heating_blocking;
+    OptionalComponent<binary_sensor::BinarySensor> master_summer_mode;
     OptionalComponent<binary_sensor::BinarySensor> master_outside_temperature_compensation;
 
     // Slave state
@@ -128,10 +130,12 @@ public:
     OptionalComponent<sensor::Sensor> predicted_temperature;
 
     void set_room_thermostat(OpenthermGatewayClimate* clim);
+    void set_hot_water(OpenthermGatewayClimate* clim);
     void set_heating_circuit_1(OpenthermGatewayClimate* clim);
     void set_heating_circuit_2(OpenthermGatewayClimate* clim);
     void set_override_thermostat(bool value);
     void set_outside_temperature_override(sensor::Sensor* sens);
+    void set_time_source(time::RealTimeClock* time);
 
 private:
     std::string const &readline();
@@ -142,17 +146,19 @@ private:
     bool is_error(char first, char second);
     bool send_command(char const *command, char const *parameter);
 
+    climate::ClimateAction calculate_climate_action(bool flame, bool heating);
+    bool set_room_setpoint(float temperature);
+    bool set_heating_circuit_setpoint(HeatingCircuit& heating_circuit, optional<float> temperature);
+    bool refresh_heating_circuit_setpoint(optional<HeatingCircuit>& heating_circuit);
+    bool set_heating_circuit_target_temperature(optional<HeatingCircuit>& heating_circuit, float temperature);
+    bool set_heating_circuit_action(optional<HeatingCircuit>& heating_circuit, bool flame, bool heating);
+
 public:
     OpenthermGateway(uart::UARTComponent *parent) : uart::UARTDevice(parent) {}
 
     void setup() override;
     void loop() override;
 
-    bool set_room_setpoint(float temperature);
-    bool set_heating_circuit_setpoint(HeatingCircuit& heating_circuit, optional<float> temperature);
-    bool refresh_heating_circuit_setpoint(optional<HeatingCircuit>& heating_circuit);
-    bool set_heating_circuit_target_temperature(optional<HeatingCircuit>& heating_circuit, float temperature);
-    bool set_heating_circuit_action(optional<HeatingCircuit>& heating_circuit, bool flame, bool heating);
 };
 
 }

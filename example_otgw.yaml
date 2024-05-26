@@ -1,0 +1,176 @@
+esphome:
+  name: opentherm-gateway
+  platform: ESP8266
+  board: d1_mini
+
+api:
+
+ota:
+
+#external_components:
+#  - source: github://KPWhiver/opentherm-gateway-esphome@main
+external_components:
+  - source:
+      type: local
+      path: components
+
+otgw:
+  override_thermostat: true
+  time_source: hass_time
+
+uart:
+  id: uart_bus
+  tx_pin: GPIO1
+  rx_pin: GPIO3
+  baud_rate: 9600
+  data_bits: 8
+  stop_bits: 1
+  parity: NONE
+
+time:
+- platform: homeassistant
+  id: hass_time
+
+text_sensor:
+- platform: otgw
+  slave_opentherm_version:
+    name: "Boiler opentherm version"
+  master_opentherm_version:
+    name: "Thermostat opentherm version"
+
+binary_sensor:
+- platform: otgw
+
+  # Master state
+  master_central_heating_1:
+    name: "Master Central Heating 1"
+  master_central_heating_2:
+    name: "Master Central Heating 2"
+  master_cooling:
+    name: "Master Cooling"
+  master_water_heating_blocking:
+    name: "Master Water Heating Blocking"
+  master_summer_mode:
+    name: "Master Summer Mode"
+  master_water_heating:
+    name: "Master Water Heating"
+  master_outside_temperature_compensation:
+    name: "Master Outside Temperature Compensation"
+
+  # Slave state
+  slave_fault:
+    name: "Slave Fault"
+  slave_central_heating_1:
+    name: "Slave Central Heating 1"
+  slave_central_heating_2:
+    name: "Slave Central Heating 2"
+  slave_water_heating:
+    name: "Slave Water Heating"
+  slave_flame:
+    name: "Slave Flame"
+  slave_cooling:
+    name: "Slave Cooling"
+  slave_diagnostic_event:
+    name: "Slave Diagnostic Event"
+
+  # Faults
+  service_required:
+    name: "Service Required"
+  lockout_reset:
+    name: "Lockout Reset"
+  low_water_pressure:
+    name: "Low water Pressure"
+  gas_flame_fault:
+    name: "Gas Flame Fault"
+  air_pressure_fault:
+    name: "Air Pressure Fault"
+  water_overtemperature:
+    name: "Water Overtemperature"
+
+sensor:
+- platform: otgw
+
+  # Setpoints
+  hot_water_setpoint:
+    name: "Hot Water Setpoint"
+  max_central_heating_setpoint:
+    name: "Max Central Heating Setpoint"
+  central_heating_setpoint_1:
+    name: "Central Heating Setpoint 1"
+  central_heating_setpoint_2:
+    name: "Central Heating Setpoint 2"
+  room_setpoint_1:
+    name: "Room Setpoint 1"
+  room_setpoint_2:
+    name: "Room Setpoint 2"
+  remote_override_room_setpoint:
+    name: "Remote Override Room Setpoint"
+
+  # Temperatures
+  central_heating_temperature_1:
+    name: "Central Heating Temperature 1"
+  central_heating_temperature_2:
+    name: "Central Heating Temperature 2"
+  hot_water_temperature_1:
+    name: "Hot Water Temperature 1"
+  hot_water_temperature_2:
+    name: "Hot Water Temperature 2"
+  room_temperature:
+    name: "Room Temperature"
+  outside_temperature:
+    name: "Outside Temperature"
+  return_water_temperature:
+    name: "Return Water Temperature"
+  solar_storage_temperature:
+    name: "Solar Storage Temperature"
+  solar_collector_temperature:
+    name: "Solar Collector Temperature"
+  exhaust_temperature:
+    name: "Exhaust Temperature"
+
+  # Modulation
+  relative_modulation_level:
+    name: "Relative Modulation Level"
+  max_boiler_capacity:
+    name: "Max Boiler Capacity"
+  min_modulation_level:
+    name: "Min modulation level"
+  max_relative_modulation_level:
+    name: "Max Relative Modulation Level"
+
+  # Water
+  central_heating_water_pressure:
+    name: "Central Heating Water Pressure"
+  hot_water_flow_rate:
+    name: "Hot Water Flow Rate"
+
+  # Starts
+  central_heating_burner_starts:
+    name: "Central Heating Burner Starts"
+  central_heating_pump_starts:
+    name: "Central Heating Pump Starts"
+  hot_water_burner_starts:
+    name: "Hot Water Pump Starts"
+  hot_water_pump_starts:
+    name: "Hot Water Burner Starts"
+
+  # Operation hours
+  central_heating_burner_operation_time:
+    name: "Central Heating Burner Operation Time"
+  central_heating_pump_operation_time:
+    name: "Central Heating Pump Operation Time"
+  hot_water_pump_operation_time:
+    name: "Hot Water Pump Operation Time"
+  hot_water_burner_operation_time:
+    name: "Hot Water Burner Operation Time"
+
+climate:
+  - platform: otgw
+    room_thermostat:
+      name: "Room"
+    heating_circuit_1:
+      name: "Heating Circuit 1"
+    heating_circuit_2:
+      name: "Heating Circuit 2"
+    hot_water:
+      name: "Hot Water"
