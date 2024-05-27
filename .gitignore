@@ -2,4 +2,9 @@
 # This is an example and may include too much for your use-case.
 # You can modify this file to suit your needs.
 /.esphome/
-/secrets.yaml
+/.cache/
+/CMakeFiles/
+/compile_commands.json
+/Makefile
+/cmake_install.cmake
+/CMakeCache.txt
