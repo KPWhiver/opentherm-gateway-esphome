@@ -540,6 +540,13 @@ void OpenthermGateway::set_time_source(time::RealTimeClock *time) {
   });
 }
 
+void OpenthermGateway::set_reset_service_request_button(OpenthermGatewayButton *butt) {
+  _reset_service_request = butt;
+  _reset_service_request->set_callback([=]() {
+    queue_command("RR", "10");
+  });
+}
+
 bool OpenthermGateway::set_heating_circuit_setpoint(HeatingCircuit &heating_circuit, optional<float> temperature) {
   heating_circuit.time_of_last_command = millis();
 

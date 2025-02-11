@@ -38,6 +38,11 @@ time:
 - platform: homeassistant
   id: hass_time
 
+button:
+- platform: otgw
+  reset_service_request:
+    name: "Reset service request"
+
 text_sensor:
 - platform: otgw
   slave_opentherm_version:

@@ -1,10 +1,12 @@
 #pragma once
 
 #include "climate.h"
+#include "button.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/button/button.h"
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/time/real_time_clock.h"
 
@@ -41,6 +43,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   ///// Components /////
   OpenthermGatewayClimate *_room_thermostat{nullptr};
   OpenthermGatewayClimate *_hot_water{nullptr};
+  OpenthermGatewayButton *_reset_service_request{nullptr};
   optional<HeatingCircuit> _heating_circuit_1;
   optional<HeatingCircuit> _heating_circuit_2;
 
@@ -134,6 +137,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   void set_override_thermostat(bool value);
   void set_outside_temperature_override(sensor::Sensor *sens);
   void set_time_source(time::RealTimeClock *time);
+  void set_reset_service_request_button(OpenthermGatewayButton *butt);
 
  protected:
   static constexpr uint16_t MAX_BUFFER_SIZE = 128;
