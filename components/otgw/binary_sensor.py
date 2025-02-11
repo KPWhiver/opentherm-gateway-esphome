@@ -21,21 +21,37 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional("master_outside_temperature_compensation"): binary_sensor.binary_sensor_schema(),
 
     # Slave state
-    cv.Optional("slave_fault"): binary_sensor.binary_sensor_schema(),
+    cv.Optional("slave_fault"): binary_sensor.binary_sensor_schema(
+        device_class="problem",
+    ),
     cv.Optional("slave_central_heating_1"): binary_sensor.binary_sensor_schema(),
     cv.Optional("slave_central_heating_2"): binary_sensor.binary_sensor_schema(),
     cv.Optional("slave_water_heating"): binary_sensor.binary_sensor_schema(),
     cv.Optional("slave_flame"): binary_sensor.binary_sensor_schema(),
     cv.Optional("slave_cooling"): binary_sensor.binary_sensor_schema(),
-    cv.Optional("slave_diagnostic_event"): binary_sensor.binary_sensor_schema(),
+    cv.Optional("slave_diagnostic_event"): binary_sensor.binary_sensor_schema(
+        device_class="problem",
+    ),
 
     # Faults
-    cv.Optional("service_required"): binary_sensor.binary_sensor_schema(),
-    cv.Optional("lockout_reset"): binary_sensor.binary_sensor_schema(),
-    cv.Optional("low_water_pressure"): binary_sensor.binary_sensor_schema(),
-    cv.Optional("gas_flame_fault"): binary_sensor.binary_sensor_schema(),
-    cv.Optional("air_pressure_fault"): binary_sensor.binary_sensor_schema(),
-    cv.Optional("water_overtemperature"): binary_sensor.binary_sensor_schema(),
+    cv.Optional("service_required"): binary_sensor.binary_sensor_schema(
+        device_class="problem",
+    ),
+    cv.Optional("lockout_reset"): binary_sensor.binary_sensor_schema(
+        device_class="problem",
+    ),
+    cv.Optional("low_water_pressure"): binary_sensor.binary_sensor_schema(
+        device_class="problem",
+    ),
+    cv.Optional("gas_flame_fault"): binary_sensor.binary_sensor_schema(
+        device_class="problem",
+    ),
+    cv.Optional("air_pressure_fault"): binary_sensor.binary_sensor_schema(
+        device_class="problem",
+    ),
+    cv.Optional("water_overtemperature"): binary_sensor.binary_sensor_schema(
+        device_class="problem",
+    ),
 })
 
 async def to_code(config):
