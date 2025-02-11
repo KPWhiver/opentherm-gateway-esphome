@@ -6,6 +6,7 @@ namespace esphome {
 namespace otgw {
 
 class OpenthermGatewayClimate : public Component, public climate::Climate {
+ protected:
   std::function<void(optional<float>)> _callback;
   climate::ClimateTraits _traits;
   bool _off_supported;

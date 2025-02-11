@@ -16,6 +16,7 @@ namespace esphome {
 namespace otgw {
 
 template<typename ComponentType> class OptionalComponent {
+ protected:
   ComponentType *component{nullptr};
 
  public:
@@ -29,6 +30,7 @@ template<typename ComponentType> class OptionalComponent {
 };
 
 class OpenthermGateway : public Component, public uart::UARTDevice {
+ protected:
   struct HeatingCircuit {
     uint64_t time_of_last_command;
     OpenthermGatewayClimate *heating_circuit;
@@ -133,14 +135,23 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   void set_outside_temperature_override(sensor::Sensor *sens);
   void set_time_source(time::RealTimeClock *time);
 
- private:
-  std::string const &readline();
+ protected:
+  static constexpr uint16_t MAX_BUFFER_SIZE = 128;
+  std::string _receive_buffer;
+
+  static constexpr uint16_t MAX_COMMAND_QUEUE_LENGTH = 20;
+  std::vector<std::string> _command_queue;
+  optional<std::string> _send_command;
+  uint16_t _lines_since_command = 0;
+
+  void read_available();
   float parse_float(uint16_t data);
   int16_t parse_int16(uint16_t data);
   int8_t parse_int8(uint8_t data);
-  bool is_busy(char first, char second);
-  bool is_error(char first, char second);
-  bool send_command(char const *command, char const *parameter);
+  bool is_error(std::string const &command_code);
+  bool queue_command(char const *command, char const *parameter);
+  void parse_command_response(std::string const &line);
+  void parse_line(std::string const &line);
 
   climate::ClimateAction calculate_climate_action(bool flame, bool heating);
   bool set_room_setpoint(float temperature);
@@ -150,7 +161,10 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   bool set_heating_circuit_action(optional<HeatingCircuit> &heating_circuit, bool flame, bool heating);
 
  public:
-  OpenthermGateway(uart::UARTComponent *parent) : uart::UARTDevice(parent) {}
+  OpenthermGateway(uart::UARTComponent *parent) : uart::UARTDevice(parent) {
+    _receive_buffer.reserve(MAX_BUFFER_SIZE);
+    _command_queue.reserve(MAX_COMMAND_QUEUE_LENGTH);
+  }
 
   void setup() override;
   void loop() override;
