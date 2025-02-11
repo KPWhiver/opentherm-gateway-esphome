@@ -4,4 +4,4 @@ project(esphome-otgw)
 
 add_library(otgw components/otgw/climate.cpp components/otgw/otgw.cpp)
 
-target_include_directories(otgw PUBLIC ../esphome)
+target_include_directories(otgw PUBLIC .esphome/build/opentherm-gateway/src)
