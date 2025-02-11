@@ -5,10 +5,6 @@ namespace otgw {
 
 OpenthermGatewayClimate::OpenthermGatewayClimate(float max_temperature, bool off_supported)
     : _off_supported(off_supported) {
-  if (!off_supported) {
-    this->mode = climate::CLIMATE_MODE_HEAT;
-  }
-
   _traits.set_supports_current_temperature(true);
   _traits.set_supported_modes({climate::CLIMATE_MODE_HEAT});
   if (off_supported) {
@@ -18,6 +14,10 @@ OpenthermGatewayClimate::OpenthermGatewayClimate(float max_temperature, bool off
   _traits.set_visual_min_temperature(1);
   _traits.set_visual_max_temperature(max_temperature);
   _traits.set_visual_temperature_step(0.01);
+
+  if (!off_supported) {
+    this->set_mode(climate::CLIMATE_MODE_HEAT);
+  }
 }
 
 void OpenthermGatewayClimate::control(const climate::ClimateCall &call) {
