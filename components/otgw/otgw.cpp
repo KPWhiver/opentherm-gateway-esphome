@@ -510,7 +510,7 @@ void OpenthermGateway::set_heating_circuit_1(OpenthermGatewayClimate *clim) {
 }
 
 void OpenthermGateway::set_heating_circuit_2(OpenthermGatewayClimate *clim) {
-  _heating_circuit_1 = HeatingCircuit{0, clim, "C2", "H2"};
+  _heating_circuit_2 = HeatingCircuit{0, clim, "C2", "H2"};
 
   _heating_circuit_2->heating_circuit->set_callback(
       [=](optional<float> state) { set_heating_circuit_setpoint(*_heating_circuit_2, state); });
