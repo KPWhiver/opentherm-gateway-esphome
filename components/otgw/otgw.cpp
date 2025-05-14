@@ -115,7 +115,7 @@ void OpenthermGateway::parse_command_response(std::string const &line) {
   _lines_since_command = 0;
 
   if (command_code == "PR") {
-    ESP_LOGD("otgw", line.substr(3).c_str());
+    ESP_LOGD("otgw", "%s", line.substr(3).c_str());
   } else {
     // Otherwise we received a confirmation that the command was succesfull.
   }
