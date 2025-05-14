@@ -44,6 +44,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   OpenthermGatewayClimate *_room_thermostat{nullptr};
   OpenthermGatewayClimate *_hot_water{nullptr};
   OpenthermGatewayButton *_reset_service_request{nullptr};
+  OpenthermGatewayButton *_hot_water_push{nullptr};
   optional<HeatingCircuit> _heating_circuit_1;
   optional<HeatingCircuit> _heating_circuit_2;
 
@@ -138,6 +139,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   void set_outside_temperature_override(sensor::Sensor *sens);
   void set_time_source(time::RealTimeClock *time);
   void set_reset_service_request_button(OpenthermGatewayButton *butt);
+  void set_hot_water_push_button(OpenthermGatewayButton *butt);
 
  protected:
   static constexpr uint16_t MAX_BUFFER_SIZE = 128;
