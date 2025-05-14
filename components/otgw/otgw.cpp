@@ -35,7 +35,7 @@ bool OpenthermGateway::is_error(std::string const &command_code) {
 
 bool OpenthermGateway::queue_command(char const *command, char const *parameter) {
   if (_command_queue.size() == MAX_COMMAND_QUEUE_LENGTH) {
-    ESP_LOGD("otgw", "Failed to send %s=%s because the queue is full", command, parameter);
+    ESP_LOGE("otgw", "Failed to send %s=%s because the queue is full", command, parameter);
     return false;
   }
 
@@ -91,7 +91,7 @@ void OpenthermGateway::read_available() {
 
 void OpenthermGateway::parse_command_response(std::string const &line) {
   if (!_send_command) {
-    ESP_LOGD("otgw", "Received unexpected reply (%s).", line.c_str());
+    ESP_LOGE("otgw", "Received unexpected reply (%s).", line.c_str());
     return;
   }
 
@@ -110,7 +110,7 @@ void OpenthermGateway::parse_command_response(std::string const &line) {
   }
 
   if (command_code != _send_command->substr(0, 2)) {
-    ESP_LOGD("otgw", "Received reply (%s) that does not match command (%s).", line.c_str(), _send_command->c_str());
+    ESP_LOGE("otgw", "Received reply (%s) that does not match command (%s).", line.c_str(), _send_command->c_str());
     return;
   }
 
@@ -133,7 +133,7 @@ void OpenthermGateway::parse_line(std::string const &line) {
 
   if (_send_command) {
     if (_lines_since_command > 3) {
-      ESP_LOGD("otgw", "Did not receive a reply to command (%s).", _send_command->c_str());
+      ESP_LOGE("otgw", "Did not receive a reply to command (%s).", _send_command->c_str());
       if (_command_queue.size() < MAX_COMMAND_QUEUE_LENGTH)
         _command_queue.push_back(*_send_command);
       _send_command.reset();
@@ -143,7 +143,7 @@ void OpenthermGateway::parse_line(std::string const &line) {
   }
 
   if (line.size() != 9) {
-    ESP_LOGD("otgw", "Received line (%s) is not 9 characters", line.c_str());
+    ESP_LOGE("otgw", "Received line (%s) is not 9 characters", line.c_str());
     return;
   }
 
@@ -173,7 +173,7 @@ void OpenthermGateway::parse_line(std::string const &line) {
     case 0b0001:  // WRITE
       break;
     case 0b0010:  // INVALID-DATA
-      ESP_LOGD("otgw", "MSG %d: invalid data", data_type);
+      ESP_LOGE("otgw", "MSG %d: invalid data", data_type);
       return;
     case 0b0011:  // reserved
       return;
@@ -184,10 +184,10 @@ void OpenthermGateway::parse_line(std::string const &line) {
     case 0b0101:  // WRITE-ACK
       return;
     case 0b0110:  // DATA-INVALID
-      ESP_LOGD("otgw", "MSG %d: data invalid", data_type);
+      ESP_LOGE("otgw", "MSG %d: data invalid", data_type);
       return;
     case 0b0111:  // UNKNOWN-DATAID
-      ESP_LOGD("otgw", "MSG %d: unknown dataid", data_type);
+      ESP_LOGE("otgw", "MSG %d: unknown dataid", data_type);
       return;
     default:
       return;  // Does not contain interesting data
@@ -444,7 +444,7 @@ void OpenthermGateway::parse_line(std::string const &line) {
       break;
 
     default:
-      ESP_LOGD("otgw", "Unsupported data id: %d (%s)", data_type, line.c_str());
+      ESP_LOGW("otgw", "Unsupported data id: %d (%s)", data_type, line.c_str());
       break;
   }
 }
