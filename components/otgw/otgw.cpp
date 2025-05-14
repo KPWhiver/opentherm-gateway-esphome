@@ -551,6 +551,13 @@ void OpenthermGateway::set_reset_service_request_button(OpenthermGatewayButton *
   });
 }
 
+void OpenthermGateway::set_hot_water_push_button(OpenthermGatewayButton *butt) {
+  _hot_water_push = butt;
+  _hot_water_push->set_callback([=]() {
+    queue_command("HW", "P");
+  });
+}
+
 bool OpenthermGateway::set_heating_circuit_setpoint(HeatingCircuit &heating_circuit, optional<float> temperature) {
   heating_circuit.time_of_last_command = millis();
 
