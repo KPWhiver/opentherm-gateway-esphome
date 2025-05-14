@@ -14,17 +14,19 @@ int8_t OpenthermGateway::parse_int8(uint8_t data) { return *reinterpret_cast<int
 
 bool OpenthermGateway::is_error(std::string const &command_code) {
   if (command_code == "NG")
-    ESP_LOGD("otgw", "The command code is unknown.");
+    ESP_LOGE("otgw", "The command code is unknown.");
   else if (command_code == "SE")
-    ESP_LOGD("otgw", "The command contained an unexpected character or was incomplete.");
+    ESP_LOGE("otgw", "The command contained an unexpected character or was incomplete.");
   else if (command_code == "BV")
-    ESP_LOGD("otgw", "The command contained a data value that is not allowed.");
+    ESP_LOGE("otgw", "The command contained a data value that is not allowed.");
   else if (command_code == "OR")
-    ESP_LOGD("otgw", "A number was specified outside of the allowed range.");
+    ESP_LOGE("otgw", "A number was specified outside of the allowed range.");
   else if (command_code == "NS")
-    ESP_LOGD("otgw", "The alternative Data-ID could not be added because the table is full.");
+    ESP_LOGE("otgw", "The alternative Data-ID could not be added because the table is full.");
   else if (command_code == "NF")
-    ESP_LOGD("otgw", "The specified alternative Data-ID could not be removed because it does not exist in the table.");
+    ESP_LOGE("otgw", "The specified alternative Data-ID could not be removed because it does not exist in the table.");
+  else if (command_code == "OE")
+    ESP_LOGE("otgw", "The processor was busy and failed to process all received characters.");
   else
     return false;
 
