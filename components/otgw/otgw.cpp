@@ -123,6 +123,7 @@ void OpenthermGateway::parse_command_response(std::string const &line) {
 }
 
 void OpenthermGateway::parse_line(std::string const &line) {
+  ESP_LOGD("otgw", "< %s", line.c_str());
   if (line.size() >= 3 && line[2] == ':') {
     parse_command_response(line);
     return;
@@ -450,6 +451,7 @@ void OpenthermGateway::loop() {
   if (!_send_command && !_command_queue.empty()) {
     _send_command = _command_queue[0];
     _command_queue.erase(_command_queue.begin());
+    ESP_LOGD("otgw", "> %s", _send_command->c_str());
     write_str(_send_command->c_str());
     flush();
   }
