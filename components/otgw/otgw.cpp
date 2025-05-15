@@ -339,6 +339,11 @@ void OpenthermGateway::parse_line(std::string const &line) {
       if (_heating_circuit_1) {
         _heating_circuit_1->heating_circuit->set_current_temperature(temperature);
       }
+
+      // Some boilers do not report the hot water temperature. In that case we can take the overall temperature.
+      if (_hot_water && !_hot_water_temperature_reported) {
+        _hot_water->set_current_temperature(temperature);
+      }
       break;
     }
     case 31: {
@@ -353,6 +358,8 @@ void OpenthermGateway::parse_line(std::string const &line) {
     case 26: {
       float temperature = parse_float(data);
       this->hot_water_temperature_1.publish_state(temperature);
+
+      _hot_water_temperature_reported = true;
 
       if (_hot_water != nullptr) {
         _hot_water->set_current_temperature(temperature);

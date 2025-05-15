@@ -52,6 +52,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   time::RealTimeClock *_time_source{nullptr};
 
   bool _override_thermostat{false};
+  bool _hot_water_temperature_reported{false};
 
  public:
   OptionalComponent<text_sensor::TextSensor> slave_opentherm_version;
