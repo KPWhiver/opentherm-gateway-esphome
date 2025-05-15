@@ -162,10 +162,11 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
 
   climate::ClimateAction calculate_climate_action(bool flame, bool heating);
   bool set_room_setpoint(float temperature);
-  bool set_heating_circuit_setpoint(HeatingCircuit &heating_circuit, optional<float> temperature);
-  bool refresh_heating_circuit_setpoint(optional<HeatingCircuit> &heating_circuit);
-  bool set_heating_circuit_target_temperature(optional<HeatingCircuit> &heating_circuit, float temperature);
-  bool set_heating_circuit_action(optional<HeatingCircuit> &heating_circuit, bool flame, bool heating);
+  void set_heating_circuit_target(HeatingCircuit &heating_circuit);
+  void set_heating_circuit_mode(HeatingCircuit &heating_circuit);
+  void refresh_heating_circuit_target(optional<HeatingCircuit> &heating_circuit);
+  bool set_heater_climate_target_temperature(optional<HeatingCircuit> &heating_circuit, float temperature);
+  bool set_heater_climate_action(optional<HeatingCircuit> &heating_circuit, bool flame, bool heating);
 
  public:
   OpenthermGateway(uart::UARTComponent *parent) : uart::UARTDevice(parent) {
