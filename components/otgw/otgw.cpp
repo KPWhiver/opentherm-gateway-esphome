@@ -219,8 +219,13 @@ void OpenthermGateway::parse_line(std::string const &line) {
       }
 
       bool master_water_heating = master_bits[1];
+      bool master_block_hot_water = master_bits[6];
       if (_hot_water != nullptr) {
-        _hot_water->set_mode(master_water_heating ? climate::CLIMATE_MODE_HEAT : climate::CLIMATE_MODE_OFF);
+        climate::ClimateMode mode = climate::CLIMATE_MODE_OFF;
+        if (!master_block_hot_water) {
+          mode = master_water_heating ? climate::CLIMATE_MODE_HEAT : climate::CLIMATE_MODE_AUTO;
+        }
+        _hot_water->set_mode(mode);
       }
 
       this->master_central_heating_1.publish_state(master_central_heating_1);
