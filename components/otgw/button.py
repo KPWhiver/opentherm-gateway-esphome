@@ -9,6 +9,7 @@ from . import OpenthermGateway, CONF_OTGW_ID, otgw_ns
 AUTO_LOAD = ["otgw"]
 
 CONF_RESET_SERVICE_REQUEST = "reset_service_request"
+CONF_HOT_WATER_PUSH = "hot_water_push"
 
 OpenthermGatewayButton = otgw_ns.class_("OpenthermGatewayButton", button.Button)
 
@@ -16,6 +17,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(CONF_OTGW_ID): cv.use_id(OpenthermGateway),
 
     cv.Optional(CONF_RESET_SERVICE_REQUEST): button.button_schema(OpenthermGatewayButton),
+    cv.Optional(CONF_HOT_WATER_PUSH): button.button_schema(OpenthermGatewayButton),
 })
 
 async def to_code(config):
@@ -24,3 +26,6 @@ async def to_code(config):
     if CONF_RESET_SERVICE_REQUEST in config:
         var = await button.new_button(config[CONF_RESET_SERVICE_REQUEST])
         cg.add(hub.set_reset_service_request_button(var))
+    if CONF_HOT_WATER_PUSH in config:
+        var = await button.new_button(config[CONF_HOT_WATER_PUSH])
+        cg.add(hub.set_hot_water_push_button(var))
