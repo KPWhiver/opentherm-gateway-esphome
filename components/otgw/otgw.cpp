@@ -326,11 +326,23 @@ void OpenthermGateway::parse_line(std::string const &line) {
       }
       break;
     }
-    case 9:
-      if (line[0] != 'T') {
-        this->remote_override_room_setpoint.publish_state(parse_float(data));
+    case 9: {
+      float temperature = parse_float(data);
+      if (line[0] == 'B') {
+        this->remote_override_room_setpoint.publish_state(temperature);
+      }
+
+      if (line[0] == 'A') {
+        if (_room_thermostat != nullptr) {
+          if (temperature == 0) {
+            _room_thermostat->set_mode(climate::ClimateMode::CLIMATE_MODE_AUTO);
+          } else {
+            _room_thermostat->set_mode(climate::ClimateMode::CLIMATE_MODE_HEAT);
+          }
+        }
       }
       break;
+    }
     case 16: {
       float temperature = parse_float(data);
       this->room_setpoint_1.publish_state(temperature);
