@@ -522,7 +522,7 @@ void OpenthermGateway::set_room_thermostat(OpenthermGatewayClimate *clim) {
         queue_command("TT", parameter);
         break;
       default:
-        ESP_LOGE("otgw", "Invalid climate mode for heating circuit %s", heating_circuit->enable_command);
+        ESP_LOGE("otgw", "Invalid climate mode for room thermostat");
         break;
     }
   };
