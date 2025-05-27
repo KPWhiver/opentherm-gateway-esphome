@@ -14,14 +14,12 @@ AUTO_LOAD = ["sensor", "text_sensor", "binary_sensor", "climate"]
 otgw_ns = cg.esphome_ns.namespace('otgw')
 OpenthermGateway = otgw_ns.class_('OpenthermGateway', uart.UARTDevice, cg.Component)
 
-CONF_OVERRIDE_THERMOSTAT = "override_thermostat"
 CONF_OUTSIDE_TEMPERATURE = "outside_temperature"
 CONF_TIME_SOURCE = "time_source"
 
 CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(OpenthermGateway),
 
-    cv.Optional(CONF_OVERRIDE_THERMOSTAT): cv.boolean,
     cv.Optional(CONF_OUTSIDE_TEMPERATURE): cv.use_id(sensor.Sensor),
     cv.Optional(CONF_TIME_SOURCE): cv.use_id(time.RealTimeClock),
 }).extend(uart.UART_DEVICE_SCHEMA)
@@ -37,8 +35,5 @@ async def to_code(config):
     if CONF_TIME_SOURCE in config:
         sens = await cg.get_variable(config[CONF_TIME_SOURCE])
         cg.add(var.set_time_source(sens));
-
-    if CONF_OVERRIDE_THERMOSTAT in config:
-        cg.add(var.set_override_thermostat(config[CONF_OVERRIDE_THERMOSTAT]))
 
     await cg.register_component(var, config)

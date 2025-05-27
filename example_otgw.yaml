@@ -22,7 +22,6 @@ external_components:
       path: components
 
 otgw:
-  override_thermostat: true
   time_source: hass_time
 
 uart:

@@ -594,8 +594,6 @@ void OpenthermGateway::set_heating_circuit_2(OpenthermGatewayClimate *clim) {
   });
 }
 
-void OpenthermGateway::set_override_thermostat(bool value) { _override_thermostat = value; }
-
 void OpenthermGateway::set_outside_temperature_override(sensor::Sensor *sens) {
   _outside_temperature_override = sens;
   _outside_temperature_override->add_on_state_callback([=](float temperature) {
