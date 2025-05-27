@@ -51,7 +51,6 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   sensor::Sensor *_outside_temperature_override{nullptr};
   time::RealTimeClock *_time_source{nullptr};
 
-  bool _override_thermostat{false};
   bool _hot_water_temperature_reported{false};
 
  public:
@@ -136,7 +135,6 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   void set_hot_water(OpenthermGatewayClimate *clim);
   void set_heating_circuit_1(OpenthermGatewayClimate *clim);
   void set_heating_circuit_2(OpenthermGatewayClimate *clim);
-  void set_override_thermostat(bool value);
   void set_outside_temperature_override(sensor::Sensor *sens);
   void set_time_source(time::RealTimeClock *time);
   void set_reset_service_request_button(OpenthermGatewayButton *butt);
