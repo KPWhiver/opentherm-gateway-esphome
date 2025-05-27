@@ -488,37 +488,30 @@ void OpenthermGateway::loop() {
     ESP_LOGD("otgw", "> %s", _send_command->c_str());
     write_str(_send_command->c_str());
     flush();
+  } else if (!_send_command) { // Means queue is empty
+    // We do this here to avoid spamming the queue
+    refresh_heating_circuit_target(_heating_circuit_1);
+    refresh_heating_circuit_target(_heating_circuit_2);
   }
 
   read_available();
-
-  // Send heater commands
-  refresh_heating_circuit_target(_heating_circuit_1);
-  refresh_heating_circuit_target(_heating_circuit_2);
 }
 
 void OpenthermGateway::refresh_heating_circuit_target(optional<HeatingCircuit> &heating_circuit) {
-  uint64_t now = millis();
-  if (heating_circuit &&
-      (now < heating_circuit->time_of_last_command || now - heating_circuit->time_of_last_command > 50'000)) {
-    climate::Climate *clim = heating_circuit->heating_circuit;
+  if (!heating_circuit) {
+    return;
+  };
 
-    switch (clim->mode) {
-      case climate::ClimateMode::CLIMATE_MODE_HEAT:
-        char parameter[6];
-        sprintf(parameter, "%2.2f", max(clim->target_temperature, 5.0f));
-        queue_command(heating_circuit->temp_command, parameter);
-        break;
-      case climate::ClimateMode::CLIMATE_MODE_AUTO:
-        // No need to send the command since we want the thermostat to take over
-        break;
-      case climate::ClimateMode::CLIMATE_MODE_OFF:
-        queue_command(heating_circuit->temp_command, "5.00");
-        break;
-      default:
-        ESP_LOGE("otgw", "Invalid climate mode for heating circuit %s", heating_circuit->enable_command);
-        break;
-    }
+  uint64_t now = millis();
+  if (
+    // This means the clock has overrun
+    now < heating_circuit->time_of_last_command ||
+    // Refresh is needed at least every minute
+    now - heating_circuit->time_of_last_command > 50'000
+  ) {
+    // Update both the mode and target, this avoid initialisation issues in case
+    // of OTGW or esphome restarts
+    set_heating_circuit_mode(*heating_circuit);
   }
 }
 
@@ -663,13 +656,15 @@ void OpenthermGateway::set_heating_circuit_target(HeatingCircuit &heating_circui
 
 void OpenthermGateway::set_heating_circuit_mode(HeatingCircuit &heating_circuit) {
   climate::Climate *clim = heating_circuit.heating_circuit;
-  char parameter[6];
 
   switch (clim->mode) {
     case climate::ClimateMode::CLIMATE_MODE_HEAT:
       // In this case, the temperature was set to 0 or 5 before, so here we restore it
-      sprintf(parameter, "%2.2f", max(clim->target_temperature, 5.0f));
-      queue_command(heating_circuit.temp_command, parameter);
+      if (!std::isnan(clim->target_temperature)) {
+        char parameter[6];
+        sprintf(parameter, "%2.2f", max(clim->target_temperature, 5.0f));
+        queue_command(heating_circuit.temp_command, parameter);
+      }
       queue_command(heating_circuit.enable_command, "1");
       break;
     case climate::ClimateMode::CLIMATE_MODE_AUTO:
