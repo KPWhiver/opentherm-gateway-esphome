@@ -10,16 +10,11 @@ ota:
 - platform: esphome
 
 wifi:
-  ssid: "ssid"
-  password: "password"
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
 
-
-#external_components:
-#  - source: github://KPWhiver/opentherm-gateway-esphome@main
 external_components:
-  - source:
-      type: local
-      path: components
+  - source: github://KPWhiver/opentherm-gateway-esphome@main
 
 otgw:
   time_source: hass_time
