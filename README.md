@@ -10,7 +10,7 @@ Not all functionality offered by the gateway is currently supported, due to a la
 ## Use cases
 There are several ways to use this component. A full example of all the options can be found in `example_otgw.yaml`.
 
-A simple setup would be to just use it to control the temperature setpoint remotely and perhaps update the time and outside thermostat on the thermostat. This can be done with the following configuration:
+A simple setup would be to just use it to control the temperature setpoint remotely and perhaps update the time and outside temperature on the thermostat. This can be done with something like the following configuration:
 ```yaml
 esp8266:
   board: d1_mini
