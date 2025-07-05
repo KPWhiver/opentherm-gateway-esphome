@@ -19,6 +19,15 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional("master_opentherm_version"): text_sensor.text_sensor_schema(
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
+    cv.Optional("opentherm_gateway_version"): text_sensor.text_sensor_schema(
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    cv.Optional("opentherm_gateway_build_date"): text_sensor.text_sensor_schema(
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    cv.Optional("last_reset_cause"): text_sensor.text_sensor_schema(
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
 })
 
 async def to_code(config):

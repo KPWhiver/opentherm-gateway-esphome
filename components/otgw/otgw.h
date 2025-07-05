@@ -56,6 +56,9 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
  public:
   OptionalComponent<text_sensor::TextSensor> slave_opentherm_version;
   OptionalComponent<text_sensor::TextSensor> master_opentherm_version;
+  OptionalComponent<text_sensor::TextSensor> opentherm_gateway_version;
+  OptionalComponent<text_sensor::TextSensor> opentherm_gateway_build_date;
+  OptionalComponent<text_sensor::TextSensor> last_reset_cause;
 
   // Master state
   OptionalComponent<binary_sensor::BinarySensor> master_central_heating_1;

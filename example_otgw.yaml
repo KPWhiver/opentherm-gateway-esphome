@@ -43,6 +43,12 @@ text_sensor:
     name: "Boiler opentherm version"
   master_opentherm_version:
     name: "Thermostat opentherm version"
+  opentherm_gateway_version:
+    name: "Opentherm gateway version"
+  opentherm_gateway_build_date:
+    name: "Opentherm gateway build date"
+  last_reset_cause:
+    name: "Last reset cause"
 
 binary_sensor:
 - platform: otgw

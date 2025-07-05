@@ -117,7 +117,59 @@ void OpenthermGateway::parse_command_response(std::string const &line) {
   _lines_since_command = 0;
 
   if (command_code == "PR") {
-    ESP_LOGD("otgw", "%s", line.substr(3).c_str());
+    char print_report_code = line.at(4);
+    if (_send_command->at(3) != print_report_code) {
+      ESP_LOGE("otgw", "Received reply (%s) that does not match command (%s).", line.c_str(), _send_command->c_str());
+      return;
+    }
+
+    switch (print_report_code) {
+      case 'A':
+        this->opentherm_gateway_version.publish_state(line.substr(6));
+        break;
+      case 'B':
+        this->opentherm_gateway_build_date.publish_state(line.substr(6));
+        break;
+      case 'Q': {
+        char last_reset_code = line.at(6);
+        switch (last_reset_code) {
+          case 'B':
+            this->last_reset_cause.publish_state("Brown out");
+            break;
+          case 'C':
+            this->last_reset_cause.publish_state("GW=R command");
+            break;
+          case 'E':
+            this->last_reset_cause.publish_state("Reset signal");
+            break;
+          case 'L':
+            this->last_reset_cause.publish_state("Boot loop");
+            break;
+          case 'O':
+            this->last_reset_cause.publish_state("Stack overflow");
+            break;
+          case 'P':
+            this->last_reset_cause.publish_state("Power on");
+            break;
+          case 'S':
+            this->last_reset_cause.publish_state("BREAK condition on serial interface");
+            break;
+          case 'U':
+            this->last_reset_cause.publish_state("Stack underflow");
+            break;
+          case 'W':
+            this->last_reset_cause.publish_state("Watch dog timer");
+            break;
+          default:
+            ESP_LOGW("otgw", "Received unknown last reset code: %c", last_reset_code);
+            break;
+        }
+        break;
+      }
+      default:
+        ESP_LOGE("otgw", "No code written to process response: %s", line.c_str());
+        break;
+    }
   } else if (command_code == "CS") {
     if (_heating_circuit_1) {
       // The CS command needs to be given once per minute
