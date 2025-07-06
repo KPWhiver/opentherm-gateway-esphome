@@ -18,16 +18,20 @@ OpenthermGatewayClimate = otgw_ns.class_("OpenthermGatewayClimate", climate.Clim
 CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(CONF_OTGW_ID): cv.use_id(OpenthermGateway),
 
-    cv.Optional(CONF_ROOM_THERMOSTAT): climate.CLIMATE_SCHEMA.extend({
+    cv.Optional(CONF_ROOM_THERMOSTAT): climate.climate_schema(OpenthermGatewayClimate)
+    .extend({
         cv.GenerateID(): cv.declare_id(OpenthermGatewayClimate),
     }),
-    cv.Optional(CONF_HEATING_CIRCUIT_1): climate.CLIMATE_SCHEMA.extend({
+    cv.Optional(CONF_HEATING_CIRCUIT_1): climate.climate_schema(OpenthermGatewayClimate)
+    .extend({
         cv.GenerateID(): cv.declare_id(OpenthermGatewayClimate),
     }),
-    cv.Optional(CONF_HEATING_CIRCUIT_2): climate.CLIMATE_SCHEMA.extend({
+    cv.Optional(CONF_HEATING_CIRCUIT_2): climate.climate_schema(OpenthermGatewayClimate)
+    .extend({
         cv.GenerateID(): cv.declare_id(OpenthermGatewayClimate),
     }),
-    cv.Optional(CONF_HOT_WATER): climate.CLIMATE_SCHEMA.extend({
+    cv.Optional(CONF_HOT_WATER): climate.climate_schema(OpenthermGatewayClimate)
+    .extend({
         cv.GenerateID(): cv.declare_id(OpenthermGatewayClimate),
     }),
 })
