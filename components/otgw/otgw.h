@@ -33,6 +33,20 @@ template<typename ComponentType> class OptionalComponent {
 
 class OpenthermGateway : public Component, public uart::UARTDevice {
  protected:
+
+  struct Transaction {
+    enum Step : uint8_t {
+      TH_REQUEST = 0,
+      GA_REQUEST = 1,
+      CH_RESPONSE = 2,
+      GA_RESPONSE = 3,
+    };
+    uint8_t data_type = 0;
+    std::array<optional<uint16_t>, 4> data;
+  };
+  optional<Transaction> _current_transaction;
+  Transaction::Step _last_transaction_step;
+
   struct HeatingCircuit {
     uint64_t time_of_last_command;
     OpenthermGatewayClimate *heating_circuit;
@@ -159,6 +173,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   bool is_error(std::string const &command_code);
   bool queue_command(char const *command, char const *parameter);
   void parse_command_response(std::string const &line);
+  void handle_transaction();
   void parse_line(std::string const &line);
 
   climate::ClimateAction calculate_climate_action(bool flame, bool heating);
