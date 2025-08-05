@@ -184,6 +184,19 @@ void OpenthermGateway::parse_command_response(std::string const &line) {
   _send_command.reset();
 }
 
+void OpenthermGateway::handle_transaction() {
+  ESP_LOGI("otgw", "Received %d transaction:", _current_transaction->data_type);
+  if (_current_transaction->data[Transaction::TH_REQUEST])
+    ESP_LOGI("otgw", "  T: %d", *_current_transaction->data[Transaction::TH_REQUEST]);
+  if (_current_transaction->data[Transaction::GA_REQUEST])
+    ESP_LOGI("otgw", "  R: %d", *_current_transaction->data[Transaction::GA_REQUEST]);
+  if (_current_transaction->data[Transaction::CH_RESPONSE])
+    ESP_LOGI("otgw", "  B: %d", *_current_transaction->data[Transaction::CH_RESPONSE]);
+  if (_current_transaction->data[Transaction::GA_RESPONSE])
+    ESP_LOGI("otgw", "  A: %d", *_current_transaction->data[Transaction::GA_RESPONSE]);
+  _current_transaction.reset();
+}
+
 void OpenthermGateway::parse_line(std::string const &line) {
   ESP_LOGD("otgw", "< %s", line.c_str());
   if (line.size() >= 3 && line[2] == ':') {
@@ -207,50 +220,89 @@ void OpenthermGateway::parse_line(std::string const &line) {
     return;
   }
 
-  switch (line[0]) {
-    case 'B':
-    case 'T':
-    case 'R':
-    case 'A':
-      break;
-    default:
-      return;
-  }
-
   unsigned long message = strtoul(line.substr(1, 8).c_str(), nullptr, 16);
   uint8_t message_type = (message >> 28) & 0b0111;
   uint8_t data_type = (message >> 16) & 0xFF;
   uint16_t data = message & 0xFFFF;
   uint8_t high_data = (message >> 8) & 0xFF;
   uint8_t low_data = message & 0xFF;
-
-  switch (message_type) {
-    // Master -> Slave (thermostat -> boiler)
-    case 0b0000:           // READ
-      if (data_type == 0)  // The 0 message contains interesting info in the READ (master bits)
-        break;
-      return;
-    case 0b0001:  // WRITE
+  Transaction::Step transaction_step;
+  switch (line[0]) {
+    case 'T':
+      transaction_step = Transaction::TH_REQUEST;
       break;
-    case 0b0010:  // INVALID-DATA
-      ESP_LOGE("otgw", "MSG %d: invalid data", data_type);
-      return;
-    case 0b0011:  // reserved
-      return;
-
-    // Slave -> Master (boiler -> thermostat)
-    case 0b0100:  // READ-ACK
+    case 'R':
+      transaction_step = Transaction::GA_REQUEST;
       break;
-    case 0b0101:  // WRITE-ACK
-      return;
-    case 0b0110:  // DATA-INVALID
-      ESP_LOGE("otgw", "MSG %d: data invalid", data_type);
-      return;
-    case 0b0111:  // UNKNOWN-DATAID
-      ESP_LOGE("otgw", "MSG %d: unknown dataid", data_type);
-      return;
+    case 'B':
+      transaction_step = Transaction::CH_RESPONSE;
+      break;
+    case 'A':
+      transaction_step = Transaction::GA_RESPONSE;
+      break;
     default:
-      return;  // Does not contain interesting data
+      ESP_LOGE("otgw", "Received line (%s) does not start with B, T, R, or A", line.c_str());
+      return;
+  }
+
+  bool request = transaction_step <= Transaction::GA_REQUEST;
+  if (request) {
+    switch (message_type) {
+      case 0b0000:  // READ
+      case 0b0001:  // WRITE
+        break;
+      case 0b0010:  // INVALID-DATA
+        // This means that this message is required to be sent but not valid
+        // in this particular situation
+        ESP_LOGW("otgw", "MSG %d: invalid data", data_type);
+      case 0b0011:  // reserved
+        _current_transaction.reset();
+        return;
+      default:
+        ESP_LOGE("otgw", "Received line (%s) message type and transaction step does not match", line.c_str());
+        return;
+    }
+  } else {
+    switch (message_type) {
+      case 0b0100:  // READ-ACK
+      case 0b0101:  // WRITE-ACK
+        break;
+      case 0b0110:  // DATA-INVALID
+        ESP_LOGE("otgw", "MSG %d: data invalid", data_type);
+        return;
+      case 0b0111:  // UNKNOWN-DATAID
+        ESP_LOGE("otgw", "MSG %d: unknown dataid", data_type);
+        return;
+      default:
+        ESP_LOGE("otgw", "Received line (%s) message type and transaction step does not match", line.c_str());
+        return;  // Does not contain interesting data
+    }
+  }
+
+  if (_current_transaction) {
+    if (_current_transaction->data_type == data_type) {
+      if (transaction_step <= _last_transaction_step) {
+        // Assume the thermostat send the message twice
+        handle_transaction();
+      } else {
+        _current_transaction->data[transaction_step] = data;
+        _last_transaction_step = transaction_step;
+      }
+    } else {
+      handle_transaction();
+    }
+  }
+
+  // This could be triggered by handle_transaction so we need to check again
+  if (!_current_transaction) {
+    if (!request) {
+      ESP_LOGE("otgw", "First transaction line (%s) is not a request", line.c_str());
+    } else {
+      _current_transaction = Transaction{};
+      _current_transaction->data_type = data_type;
+      _current_transaction->data[transaction_step] = data;
+      _last_transaction_step = transaction_step;
+    }
   }
 
   switch (data_type) {
