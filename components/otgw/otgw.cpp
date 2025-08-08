@@ -173,12 +173,12 @@ void OpenthermGateway::parse_command_response(std::string const &line) {
   } else if (command_code == "CS") {
     if (_heating_circuit_1) {
       // The CS command needs to be given once per minute
-      _heating_circuit_1->time_of_last_command = millis();
+      _heating_circuit_1->_time_of_last_command = millis();
     }
   } else if (command_code == "C2") {
     if (_heating_circuit_2) {
       // The C2 command needs to be given once per minute
-      _heating_circuit_2->time_of_last_command = millis();
+      _heating_circuit_2->_time_of_last_command = millis();
     }
   }
   _send_command.reset();
@@ -381,7 +381,7 @@ void OpenthermGateway::parse_line(std::string const &line) {
       bool modulation_supported = !slave_configuration[1];
       bool hot_water_tank = slave_configuration[3];
       if (_heating_circuit_2) {
-        _heating_circuit_2->heating_circuit->set_internal(!slave_configuration[5]);
+        _heating_circuit_2->_component->set_internal(!slave_configuration[5]);
       }
     }
     // Faults
@@ -400,10 +400,10 @@ void OpenthermGateway::parse_line(std::string const &line) {
       double temperature = parse_float(data);
       this->max_central_heating_setpoint.publish_state(temperature);
       if (_heating_circuit_1) {
-        _heating_circuit_1->heating_circuit->set_max_temperature(temperature);
+        _heating_circuit_1->_component->set_max_temperature(temperature);
       }
       if (_heating_circuit_2) {
-        _heating_circuit_2->heating_circuit->set_max_temperature(temperature);
+        _heating_circuit_2->_component->set_max_temperature(temperature);
       }
       break;
     }
@@ -411,8 +411,8 @@ void OpenthermGateway::parse_line(std::string const &line) {
       float temperature = parse_float(data);
       this->central_heating_setpoint_1.publish_state(temperature);
 
-      if (line[0] != 'T') {
-        set_heater_climate_target_temperature(_heating_circuit_1, temperature);
+      if (line[0] != 'T' && _heating_circuit_1) {
+        _heating_circuit_1->_component->set_target_temperature(temperature);
       }
       break;
     }
@@ -420,8 +420,8 @@ void OpenthermGateway::parse_line(std::string const &line) {
       float temperature = parse_float(data);
       this->central_heating_setpoint_2.publish_state(temperature);
 
-      if (line[0] != 'T') {
-        set_heater_climate_target_temperature(_heating_circuit_2, temperature);
+      if (line[0] != 'T' && _heating_circuit_2) {
+        _heating_circuit_2->_component->set_target_temperature(temperature);
       }
       break;
     }
@@ -470,7 +470,7 @@ void OpenthermGateway::parse_line(std::string const &line) {
       this->central_heating_temperature_1.publish_state(temperature);
 
       if (_heating_circuit_1) {
-        _heating_circuit_1->heating_circuit->set_current_temperature(temperature);
+        _heating_circuit_1->_component->set_current_temperature(temperature);
       }
 
       // Some boilers do not report the hot water temperature. In that case we can take the overall temperature.
@@ -484,7 +484,7 @@ void OpenthermGateway::parse_line(std::string const &line) {
       this->central_heating_temperature_2.publish_state(temperature);
 
       if (_heating_circuit_2) {
-        _heating_circuit_2->heating_circuit->set_current_temperature(temperature);
+        _heating_circuit_2->_component->set_current_temperature(temperature);
       }
       break;
     }
@@ -598,29 +598,13 @@ void OpenthermGateway::loop() {
     flush();
   } else if (!_send_command) { // Means queue is empty
     // We do this here to avoid spamming the queue
-    refresh_heating_circuit_target(_heating_circuit_1);
-    refresh_heating_circuit_target(_heating_circuit_2);
+    if (_heating_circuit_1)
+      _heating_circuit_1->refresh(*this);
+    if (_heating_circuit_2)
+      _heating_circuit_2->refresh(*this);
   }
 
   read_available();
-}
-
-void OpenthermGateway::refresh_heating_circuit_target(optional<HeatingCircuit> &heating_circuit) {
-  if (!heating_circuit) {
-    return;
-  };
-
-  uint64_t now = millis();
-  if (
-    // This means the clock has overrun
-    now < heating_circuit->time_of_last_command ||
-    // Refresh is needed at least every minute
-    now - heating_circuit->time_of_last_command > 50'000
-  ) {
-    // Update both the mode and target, this avoid initialisation issues in case
-    // of OTGW or esphome restarts
-    set_heating_circuit_mode(*heating_circuit);
-  }
 }
 
 void OpenthermGateway::set_room_thermostat(OpenthermGatewayClimate *clim) {
@@ -680,26 +664,12 @@ void OpenthermGateway::set_hot_water(OpenthermGatewayClimate *clim) {
 
 void OpenthermGateway::set_heating_circuit_1(OpenthermGatewayClimate *clim) {
   _heating_circuit_1 = HeatingCircuit{0, clim, "CS", "CH"};
-
-  _heating_circuit_1->heating_circuit->set_callbacks([=]() {
-    // target callback
-    set_heating_circuit_target(*_heating_circuit_1);
-  }, [=]() {
-    // mode callback
-    set_heating_circuit_mode(*_heating_circuit_1);
-  });
+  _heating_circuit_1->set_callbacks(*this);
 }
 
 void OpenthermGateway::set_heating_circuit_2(OpenthermGatewayClimate *clim) {
   _heating_circuit_2 = HeatingCircuit{0, clim, "C2", "H2"};
-
-  _heating_circuit_2->heating_circuit->set_callbacks([=]() {
-    // target callback
-    set_heating_circuit_target(*_heating_circuit_2);
-  }, [=]() {
-    // mode callback
-    set_heating_circuit_mode(*_heating_circuit_2);
-  });
+  _heating_circuit_2->set_callbacks(*this);
 }
 
 void OpenthermGateway::set_outside_temperature_override(sensor::Sensor *sens) {
@@ -738,63 +708,6 @@ void OpenthermGateway::set_hot_water_push_button(OpenthermGatewayButton *butt) {
   });
 }
 
-void OpenthermGateway::set_heating_circuit_target(HeatingCircuit &heating_circuit) {
-  climate::Climate *clim = heating_circuit.heating_circuit;
-  char parameter[6];
-
-  switch (clim->mode) {
-    case climate::ClimateMode::CLIMATE_MODE_HEAT:
-      // Do not go below 5 to avoid control being given back to the thermostat
-      sprintf(parameter, "%2.2f", max(clim->target_temperature, 5.0f));
-      queue_command(heating_circuit.temp_command, parameter);
-      break;
-    case climate::ClimateMode::CLIMATE_MODE_AUTO:
-      // AUTO means the thermostat is in control so do nothing
-      break;
-    case climate::ClimateMode::CLIMATE_MODE_OFF:
-      // In this case we don't actually set the temperature as that would trigger the otgw firmware to start heating
-      break;
-    default:
-      ESP_LOGE("otgw", "Invalid climate mode for heating circuit %s", heating_circuit.enable_command);
-      break;
-  }
-}
-
-void OpenthermGateway::set_heating_circuit_mode(HeatingCircuit &heating_circuit) {
-  climate::Climate *clim = heating_circuit.heating_circuit;
-
-  switch (clim->mode) {
-    case climate::ClimateMode::CLIMATE_MODE_HEAT:
-      // In this case, the temperature was set to 0 or 5 before, so here we restore it
-      if (!std::isnan(clim->target_temperature)) {
-        char parameter[6];
-        sprintf(parameter, "%2.2f", max(clim->target_temperature, 5.0f));
-        queue_command(heating_circuit.temp_command, parameter);
-      }
-      queue_command(heating_circuit.enable_command, "1");
-      break;
-    case climate::ClimateMode::CLIMATE_MODE_AUTO:
-      queue_command(heating_circuit.temp_command, "0");
-      break;
-    case climate::ClimateMode::CLIMATE_MODE_OFF:
-      queue_command(heating_circuit.temp_command, "5.00");
-      queue_command(heating_circuit.enable_command, "0");
-      break;
-    default:
-      ESP_LOGE("otgw", "Invalid climate mode for heating circuit %s", heating_circuit.enable_command);
-      break;
-  }
-}
-
-bool OpenthermGateway::set_heater_climate_target_temperature(optional<HeatingCircuit> &heating_circuit,
-                                                              float temperature) {
-  if (heating_circuit) {
-    heating_circuit->heating_circuit->set_target_temperature(temperature);
-    return true;
-  }
-  return false;
-}
-
 climate::ClimateAction OpenthermGateway::calculate_climate_action(bool flame, bool heating) {
   climate::ClimateAction action;
   if (!heating) {
@@ -810,7 +723,7 @@ climate::ClimateAction OpenthermGateway::calculate_climate_action(bool flame, bo
 bool OpenthermGateway::set_heater_climate_action(optional<HeatingCircuit> &heating_circuit, bool flame, bool heating) {
   if (heating_circuit) {
     auto action = calculate_climate_action(flame, heating);
-    heating_circuit->heating_circuit->set_action(action);
+    heating_circuit->_component->set_action(action);
     return true;
   }
   return false;

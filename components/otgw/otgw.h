@@ -47,11 +47,18 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   optional<Transaction> _current_transaction;
   Transaction::Step _last_transaction_step;
 
+  // Heater circuit 1 and 2 are very similar, so we reuse their behaviour
+  // using this struct
   struct HeatingCircuit {
-    uint64_t time_of_last_command;
-    OpenthermGatewayClimate *heating_circuit;
-    const char *temp_command;
-    const char *enable_command;
+    uint64_t _time_of_last_command;
+    OpenthermGatewayClimate *_component;
+    const char *_temp_command;
+    const char *_enable_command;
+
+    void set_target(OpenthermGateway &gateway);
+    void set_mode(OpenthermGateway &gateway);
+    void set_callbacks(OpenthermGateway &gateway);
+    void refresh(OpenthermGateway &gateway);
   };
 
   ///// Components /////
@@ -178,9 +185,6 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
 
   climate::ClimateAction calculate_climate_action(bool flame, bool heating);
   bool set_room_setpoint(float temperature);
-  void set_heating_circuit_target(HeatingCircuit &heating_circuit);
-  void set_heating_circuit_mode(HeatingCircuit &heating_circuit);
-  void refresh_heating_circuit_target(optional<HeatingCircuit> &heating_circuit);
   bool set_heater_climate_target_temperature(optional<HeatingCircuit> &heating_circuit, float temperature);
   bool set_heater_climate_action(optional<HeatingCircuit> &heating_circuit, bool flame, bool heating);
 
@@ -193,6 +197,71 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   void setup() override;
   void loop() override;
 };
+
+inline void OpenthermGateway::HeatingCircuit::set_target(OpenthermGateway &gateway) {
+  char parameter[6];
+
+  switch (_component->mode) {
+    case climate::ClimateMode::CLIMATE_MODE_HEAT:
+      // Do not go below 5 to avoid control being given back to the thermostat
+      sprintf(parameter, "%2.2f", max(_component->target_temperature, 5.0f));
+      gateway.queue_command(_temp_command, parameter);
+      break;
+    case climate::ClimateMode::CLIMATE_MODE_AUTO:
+      // AUTO means the thermostat is in control so do nothing
+      break;
+    case climate::ClimateMode::CLIMATE_MODE_OFF:
+      // In this case we don't actually set the temperature as that would trigger the otgw firmware to start heating
+      break;
+    default:
+      ESP_LOGE("otgw", "Invalid climate mode for heating circuit %s", _enable_command);
+      break;
+  }
+}
+
+inline void OpenthermGateway::HeatingCircuit::set_mode(OpenthermGateway &gateway) {
+  switch (_component->mode) {
+    case climate::ClimateMode::CLIMATE_MODE_HEAT:
+      // In this case, the temperature was set to 0 or 5 before, so here we restore it
+      if (!std::isnan(_component->target_temperature)) {
+        char parameter[6];
+        sprintf(parameter, "%2.2f", max(_component->target_temperature, 5.0f));
+        gateway.queue_command(_temp_command, parameter);
+      }
+      gateway.queue_command(_enable_command, "1");
+      break;
+    case climate::ClimateMode::CLIMATE_MODE_AUTO:
+      gateway.queue_command(_temp_command, "0");
+      break;
+    case climate::ClimateMode::CLIMATE_MODE_OFF:
+      gateway.queue_command(_temp_command, "5.00");
+      gateway.queue_command(_enable_command, "0");
+      break;
+    default:
+      ESP_LOGE("otgw", "Invalid climate mode for heating circuit %s", _enable_command);
+      break;
+  }
+}
+
+inline void OpenthermGateway::HeatingCircuit::set_callbacks(OpenthermGateway &gateway) {
+  _component->set_callbacks([&]() {
+    set_target(gateway);
+  }, [&]() {
+    set_mode(gateway);
+  });
+}
+
+inline void OpenthermGateway::HeatingCircuit::refresh(OpenthermGateway &gateway) {
+  uint64_t now = millis();
+  if (
+    // This means the clock has overrun
+    now < _time_of_last_command ||
+    // Refresh is needed at least every minute
+    now - _time_of_last_command > 50'000
+  ) {
+    set_mode(gateway);
+  }
+}
 
 }  // namespace otgw
 }  // namespace esphome
