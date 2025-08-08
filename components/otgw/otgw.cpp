@@ -305,6 +305,10 @@ void OpenthermGateway::parse_line(std::string const &line) {
     }
   }
 
+  if (message_type != 0b0001 && message_type != 0b0100) {
+    return;
+  }
+
   switch (data_type) {
     case 0: {
       if (line[0] == 'A' || line[0] == 'R')  // Fake response/request
