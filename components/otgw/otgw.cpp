@@ -185,7 +185,7 @@ void OpenthermGateway::parse_command_response(std::string const &line) {
 }
 
 void OpenthermGateway::handle_transaction() {
-  ESP_LOGI("otgw", "Received %d transaction:", _current_transaction->data_type);
+  ESP_LOGI("otgw", "Received %d,%d %s transaction:", _current_transaction->master_data_type, _current_transaction->slave_data_type, _current_transaction->message_type == Transaction::READ ? "read" : "write");
   if (_current_transaction->data[Transaction::TH_REQUEST])
     ESP_LOGI("otgw", "  T: %d", *_current_transaction->data[Transaction::TH_REQUEST]);
   if (_current_transaction->data[Transaction::GA_REQUEST])
@@ -246,62 +246,101 @@ void OpenthermGateway::parse_line(std::string const &line) {
   }
 
   bool request = transaction_step <= Transaction::GA_REQUEST;
+  optional<Transaction::Type> transaction_type;
+  bool valid = true;
   if (request) {
     switch (message_type) {
       case 0b0000:  // READ
+        transaction_type = Transaction::READ;
+        break;
       case 0b0001:  // WRITE
+        transaction_type = Transaction::WRITE;
         break;
       case 0b0010:  // INVALID-DATA
         // This means that this message is required to be sent but not valid
         // in this particular situation
         ESP_LOGW("otgw", "MSG %d: invalid data", data_type);
+        valid = false;
+        break;
       case 0b0011:  // reserved
-        _current_transaction.reset();
-        return;
+        valid = false;
+        break;
       default:
         ESP_LOGE("otgw", "Received line (%s) message type and transaction step does not match", line.c_str());
-        return;
+        valid = false;
+        break;
     }
   } else {
     switch (message_type) {
       case 0b0100:  // READ-ACK
+        transaction_type = Transaction::READ;
+        break;
       case 0b0101:  // WRITE-ACK
+        transaction_type = Transaction::WRITE;
         break;
       case 0b0110:  // DATA-INVALID
         ESP_LOGE("otgw", "MSG %d: data invalid", data_type);
-        return;
+        valid = false;
+        break;
       case 0b0111:  // UNKNOWN-DATAID
         ESP_LOGE("otgw", "MSG %d: unknown dataid", data_type);
-        return;
+        valid = false;
+        break;
       default:
         ESP_LOGE("otgw", "Received line (%s) message type and transaction step does not match", line.c_str());
-        return;  // Does not contain interesting data
+        valid = false;
+        break;  // Does not contain interesting data
     }
   }
 
   if (_current_transaction) {
-    if (_current_transaction->data_type == data_type) {
-      if (transaction_step <= _last_transaction_step) {
-        // Assume the thermostat send the message twice
-        handle_transaction();
-      } else {
-        _current_transaction->data[transaction_step] = data;
-        _last_transaction_step = transaction_step;
-      }
-    } else {
+    _current_transaction->valid = _current_transaction->valid && valid;
+
+    if (
+      transaction_type &&
+      *transaction_type != _current_transaction->message_type
+    ) {
+      // Either a new transaction or the transaction is invalid
       handle_transaction();
+    } else if (transaction_step <= _last_transaction_step) {
+      // Either a new transaction or the transcation is invalid
+      handle_transaction();
+    } else if (request && _current_transaction->master_data_type != data_type) {
+      // The gateway can change the request to slot in for an unknown dataid
+      _current_transaction->slave_data_type = data_type;
+      _current_transaction->data[transaction_step] = data;
+      _last_transaction_step = transaction_step;
+    } else if (
+      transaction_step == Transaction::CH_RESPONSE &&
+      _current_transaction->slave_data_type != data_type
+    ) {
+      handle_transaction();
+      ESP_LOGE("otgw", "Type of line (%s) does not match that of transaction (%d)", line.c_str(), _current_transaction->slave_data_type);
+    } else if (
+      transaction_step == Transaction::GA_RESPONSE &&
+      _current_transaction->master_data_type != data_type
+    ) {
+      handle_transaction();
+      ESP_LOGE("otgw", "Type of line (%s) does not match that of transaction (%d)", line.c_str(), _current_transaction->master_data_type);
+    } else {
+      _current_transaction->data[transaction_step] = data;
+      _last_transaction_step = transaction_step;
     }
   }
 
-  // This could be triggered by handle_transaction so we need to check again
+  // Check again, because handle_transaction may have invalidated it
   if (!_current_transaction) {
+    _current_transaction = Transaction{};
+    _current_transaction->valid = true;
+    _current_transaction->message_type = transaction_type;
+    _current_transaction->slave_data_type = data_type;
+    _current_transaction->master_data_type = data_type;
+    _current_transaction->data[transaction_step] = data;
+    _last_transaction_step = transaction_step;
+
     if (!request) {
+      _current_transaction->valid = false;
       ESP_LOGE("otgw", "First transaction line (%s) is not a request", line.c_str());
-    } else {
-      _current_transaction = Transaction{};
-      _current_transaction->data_type = data_type;
-      _current_transaction->data[transaction_step] = data;
-      _last_transaction_step = transaction_step;
     }
   }
 

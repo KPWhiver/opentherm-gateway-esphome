@@ -41,7 +41,14 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
       CH_RESPONSE = 2,
       GA_RESPONSE = 3,
     };
-    uint8_t data_type = 0;
+    enum Type {
+      READ,
+      WRITE,
+    };
+    optional<Type> message_type;
+    bool valid = false;
+    uint8_t master_data_type = 0;
+    uint8_t slave_data_type = 0;
     std::array<optional<uint16_t>, 4> data;
   };
   optional<Transaction> _current_transaction;
