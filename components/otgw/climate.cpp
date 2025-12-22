@@ -5,12 +5,14 @@ namespace otgw {
 
 OpenthermGatewayClimate::OpenthermGatewayClimate(float max_temperature, bool off_supported)
     : _off_supported(off_supported) {
-  _traits.set_supports_current_temperature(true);
+  _traits.add_feature_flags(
+    climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE |
+    climate::CLIMATE_SUPPORTS_ACTION
+  );
   _traits.set_supported_modes({climate::CLIMATE_MODE_AUTO, climate::CLIMATE_MODE_HEAT});
   if (off_supported) {
     _traits.add_supported_mode(climate::CLIMATE_MODE_OFF);
   }
-  _traits.set_supports_action(true);
   _traits.set_visual_min_temperature(1);
   _traits.set_visual_max_temperature(max_temperature);
   _traits.set_visual_temperature_step(0.01);
