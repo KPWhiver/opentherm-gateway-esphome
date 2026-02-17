@@ -674,11 +674,11 @@ void OpenthermGateway::loop() {
 void OpenthermGateway::set_room_thermostat(OpenthermGatewayClimate *clim) {
   _room_thermostat = clim;
 
-  auto callback = [=]() {
+  auto callback = [this]() {
     char parameter[6];
-    sprintf(parameter, "%2.2f", clim->target_temperature);
+    sprintf(parameter, "%2.2f", _room_thermostat->target_temperature);
 
-    switch (clim->mode) {
+    switch (_room_thermostat->mode) {
       case climate::ClimateMode::CLIMATE_MODE_HEAT:
         // TC makes the target temperature constant, the thermostat can't change it automatically
         queue_command("TC", parameter);
@@ -698,15 +698,15 @@ void OpenthermGateway::set_room_thermostat(OpenthermGatewayClimate *clim) {
 
 void OpenthermGateway::set_hot_water(OpenthermGatewayClimate *clim) {
   _hot_water = clim;
-  _hot_water->set_callbacks([=]() {
+  _hot_water->set_callbacks([this]() {
     // target callback
     char parameter[6];
-    sprintf(parameter, "%2.2f", clim->target_temperature);
+    sprintf(parameter, "%2.2f", _hot_water->target_temperature);
 
     queue_command("SW", parameter);
-  }, [=]() {
+  }, [this]() {
     // mode callback
-    switch (clim->mode) {
+    switch (_hot_water->mode) {
       case climate::ClimateMode::CLIMATE_MODE_HEAT:
         queue_command("BW", "0");
         queue_command("HW", "1");
@@ -738,7 +738,7 @@ void OpenthermGateway::set_heating_circuit_2(OpenthermGatewayClimate *clim) {
 
 void OpenthermGateway::set_outside_temperature_override(sensor::Sensor *sens) {
   _outside_temperature_override = sens;
-  _outside_temperature_override->add_on_state_callback([=](float temperature) {
+  _outside_temperature_override->add_on_state_callback([this](float temperature) {
     char parameter[6];
     sprintf(parameter, "%2.2f", temperature);
 
@@ -748,7 +748,7 @@ void OpenthermGateway::set_outside_temperature_override(sensor::Sensor *sens) {
 
 void OpenthermGateway::set_time_source(time::RealTimeClock *time) {
   _time_source = time;
-  _time_source->add_on_time_sync_callback([=]() {
+  _time_source->add_on_time_sync_callback([this]() {
     auto now = _time_source->now();
 
     char parameter[12];
@@ -760,14 +760,14 @@ void OpenthermGateway::set_time_source(time::RealTimeClock *time) {
 
 void OpenthermGateway::set_reset_service_request_button(OpenthermGatewayButton *butt) {
   _reset_service_request = butt;
-  _reset_service_request->set_callback([=]() {
+  _reset_service_request->set_callback([this]() {
     queue_command("RR", "10");
   });
 }
 
 void OpenthermGateway::set_hot_water_push_button(OpenthermGatewayButton *butt) {
   _hot_water_push = butt;
-  _hot_water_push->set_callback([=]() {
+  _hot_water_push->set_callback([this]() {
     queue_command("HW", "P");
   });
 }
