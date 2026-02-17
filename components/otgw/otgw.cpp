@@ -184,178 +184,12 @@ void OpenthermGateway::parse_command_response(std::string const &line) {
   _send_command.reset();
 }
 
-void OpenthermGateway::handle_transaction() {
-  ESP_LOGI("otgw", "Received %d,%d %s transaction:", _current_transaction->master_data_type, _current_transaction->slave_data_type, _current_transaction->message_type == Transaction::READ ? "read" : "write");
-  if (_current_transaction->data[Transaction::TH_REQUEST])
-    ESP_LOGI("otgw", "  T: %d", *_current_transaction->data[Transaction::TH_REQUEST]);
-  if (_current_transaction->data[Transaction::GA_REQUEST])
-    ESP_LOGI("otgw", "  R: %d", *_current_transaction->data[Transaction::GA_REQUEST]);
-  if (_current_transaction->data[Transaction::CH_RESPONSE])
-    ESP_LOGI("otgw", "  B: %d", *_current_transaction->data[Transaction::CH_RESPONSE]);
-  if (_current_transaction->data[Transaction::GA_RESPONSE])
-    ESP_LOGI("otgw", "  A: %d", *_current_transaction->data[Transaction::GA_RESPONSE]);
-  _current_transaction.reset();
-}
-
-void OpenthermGateway::parse_line(std::string const &line) {
-  ESP_LOGD("otgw", "< %s", line.c_str());
-  if (line.size() >= 3 && line[2] == ':') {
-    parse_command_response(line);
-    return;
-  }
-
-  if (_send_command) {
-    if (_lines_since_command > 3) {
-      ESP_LOGE("otgw", "Did not receive a reply to command (%s).", _send_command->c_str());
-      if (_command_queue.size() < MAX_COMMAND_QUEUE_LENGTH)
-        _command_queue.push_back(*_send_command);
-      _send_command.reset();
-    } else {
-      _lines_since_command++;
-    }
-  }
-
-  if (line.size() != 9) {
-    ESP_LOGE("otgw", "Received line (%s) is not 9 characters", line.c_str());
-    return;
-  }
-
-  unsigned long message = strtoul(line.substr(1, 8).c_str(), nullptr, 16);
-  uint8_t message_type = (message >> 28) & 0b0111;
-  uint8_t data_type = (message >> 16) & 0xFF;
-  uint16_t data = message & 0xFFFF;
-  uint8_t high_data = (message >> 8) & 0xFF;
-  uint8_t low_data = message & 0xFF;
-  Transaction::Step transaction_step;
-  switch (line[0]) {
-    case 'T':
-      transaction_step = Transaction::TH_REQUEST;
-      break;
-    case 'R':
-      transaction_step = Transaction::GA_REQUEST;
-      break;
-    case 'B':
-      transaction_step = Transaction::CH_RESPONSE;
-      break;
-    case 'A':
-      transaction_step = Transaction::GA_RESPONSE;
-      break;
-    default:
-      ESP_LOGE("otgw", "Received line (%s) does not start with B, T, R, or A", line.c_str());
-      return;
-  }
-
-  bool request = transaction_step <= Transaction::GA_REQUEST;
-  optional<Transaction::Type> transaction_type;
-  bool valid = true;
-  if (request) {
-    switch (message_type) {
-      case 0b0000:  // READ
-        transaction_type = Transaction::READ;
-        break;
-      case 0b0001:  // WRITE
-        transaction_type = Transaction::WRITE;
-        break;
-      case 0b0010:  // INVALID-DATA
-        // This means that this message is required to be sent but not valid
-        // in this particular situation
-        ESP_LOGW("otgw", "MSG %d: invalid data", data_type);
-        valid = false;
-        break;
-      case 0b0011:  // reserved
-        valid = false;
-        break;
-      default:
-        ESP_LOGE("otgw", "Received line (%s) message type and transaction step does not match", line.c_str());
-        valid = false;
-        break;
-    }
-  } else {
-    switch (message_type) {
-      case 0b0100:  // READ-ACK
-        transaction_type = Transaction::READ;
-        break;
-      case 0b0101:  // WRITE-ACK
-        transaction_type = Transaction::WRITE;
-        break;
-      case 0b0110:  // DATA-INVALID
-        ESP_LOGE("otgw", "MSG %d: data invalid", data_type);
-        valid = false;
-        break;
-      case 0b0111:  // UNKNOWN-DATAID
-        ESP_LOGE("otgw", "MSG %d: unknown dataid", data_type);
-        valid = false;
-        break;
-      default:
-        ESP_LOGE("otgw", "Received line (%s) message type and transaction step does not match", line.c_str());
-        valid = false;
-        break;  // Does not contain interesting data
-    }
-  }
-
-  if (_current_transaction) {
-    _current_transaction->valid = _current_transaction->valid && valid;
-
-    if (
-      transaction_type &&
-      *transaction_type != _current_transaction->message_type
-    ) {
-      // Either a new transaction or the transaction is invalid
-      handle_transaction();
-    } else if (transaction_step <= _last_transaction_step) {
-      // Either a new transaction or the transcation is invalid
-      handle_transaction();
-    } else if (request && _current_transaction->master_data_type != data_type) {
-      // The gateway can change the request to slot in for an unknown dataid
-      _current_transaction->slave_data_type = data_type;
-      _current_transaction->data[transaction_step] = data;
-      _last_transaction_step = transaction_step;
-    } else if (
-      transaction_step == Transaction::CH_RESPONSE &&
-      _current_transaction->slave_data_type != data_type
-    ) {
-      handle_transaction();
-      ESP_LOGE("otgw", "Type of line (%s) does not match that of transaction (%d)", line.c_str(), _current_transaction->slave_data_type);
-    } else if (
-      transaction_step == Transaction::GA_RESPONSE &&
-      _current_transaction->master_data_type != data_type
-    ) {
-      handle_transaction();
-      ESP_LOGE("otgw", "Type of line (%s) does not match that of transaction (%d)", line.c_str(), _current_transaction->master_data_type);
-    } else {
-      _current_transaction->data[transaction_step] = data;
-      _last_transaction_step = transaction_step;
-    }
-  }
-
-  // Check again, because handle_transaction may have invalidated it
-  if (!_current_transaction) {
-    _current_transaction = Transaction{};
-    _current_transaction->valid = true;
-    _current_transaction->message_type = transaction_type;
-    _current_transaction->slave_data_type = data_type;
-    _current_transaction->master_data_type = data_type;
-    _current_transaction->data[transaction_step] = data;
-    _last_transaction_step = transaction_step;
-
-    if (!request) {
-      _current_transaction->valid = false;
-      ESP_LOGE("otgw", "First transaction line (%s) is not a request", line.c_str());
-    }
-  }
-
-  if (message_type != 0b0001 && message_type != 0b0100) {
-    return;
-  }
+bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
+  uint8_t high_data = (data >> 8) & 0xFF;
+  uint8_t low_data = data & 0xFF;
 
   switch (data_type) {
     case 0: {
-      if (line[0] == 'A' || line[0] == 'R')  // Fake response/request
-        break;
-      if (line[0] == 'T') {  // Command from the thermostat
-        break;
-      }
-
       // Master state
       std::bitset<8> master_bits(high_data);
 
@@ -407,6 +241,14 @@ void OpenthermGateway::parse_line(std::string const &line) {
       this->slave_diagnostic_event.publish_state(slave_bits[6]);
       break;
     }
+    case 1: {
+      float temperature = parse_float(data);
+      this->central_heating_setpoint_1.publish_state(temperature);
+      if (_heating_circuit_1) {
+        _heating_circuit_1->_component->set_target_temperature(temperature);
+      }
+      break;
+    }
     case 3: {
       std::bitset<8> slave_configuration(high_data);
       if (_room_thermostat != nullptr) {
@@ -423,7 +265,6 @@ void OpenthermGateway::parse_line(std::string const &line) {
         _heating_circuit_2->_component->set_internal(!slave_configuration[5]);
       }
     }
-    // Faults
     case 5: {
       std::bitset<8> bits(high_data);
       this->service_required.publish_state(bits[0]);
@@ -434,76 +275,34 @@ void OpenthermGateway::parse_line(std::string const &line) {
       this->water_overtemperature.publish_state(bits[5]);
       break;
     }
-    // Setpoints
-    case 57: {
-      double temperature = parse_float(data);
-      this->max_central_heating_setpoint.publish_state(temperature);
-      if (_heating_circuit_1) {
-        _heating_circuit_1->_component->set_max_temperature(temperature);
-      }
-      if (_heating_circuit_2) {
-        _heating_circuit_2->_component->set_max_temperature(temperature);
-      }
-      break;
-    }
-    case 1: {
-      float temperature = parse_float(data);
-      this->central_heating_setpoint_1.publish_state(temperature);
-
-      if (line[0] != 'T' && _heating_circuit_1) {
-        _heating_circuit_1->_component->set_target_temperature(temperature);
-      }
-      break;
-    }
     case 8: {
       float temperature = parse_float(data);
       this->central_heating_setpoint_2.publish_state(temperature);
-
-      if (line[0] != 'T' && _heating_circuit_2) {
+      if (_heating_circuit_2) {
         _heating_circuit_2->_component->set_target_temperature(temperature);
       }
       break;
     }
-    case 56: {
-      float temperature = parse_float(data);
-      this->hot_water_setpoint.publish_state(temperature);
-
-      if (_hot_water != nullptr) {
-        _hot_water->set_target_temperature(temperature);
-      }
-      break;
-    }
     case 9: {
-      float temperature = parse_float(data);
-      if (line[0] == 'B') {
-        this->remote_override_room_setpoint.publish_state(temperature);
-      }
-
-      if (line[0] == 'A') {
-        if (_room_thermostat != nullptr) {
-          if (temperature == 0) {
-            _room_thermostat->set_mode(climate::ClimateMode::CLIMATE_MODE_AUTO);
-          } else {
-            _room_thermostat->set_mode(climate::ClimateMode::CLIMATE_MODE_HEAT);
-          }
-        }
-      }
+      this->remote_override_room_setpoint.publish_state(parse_float(data));
       break;
     }
-    case 16: {
-      float temperature = parse_float(data);
-      this->room_setpoint_1.publish_state(temperature);
-
-      if (_room_thermostat != nullptr) {
-        _room_thermostat->set_target_temperature(temperature);
-      }
+    case 14:
+      this->max_relative_modulation_level.publish_state(parse_float(data));
       break;
-    }
-    case 23:
-      this->room_setpoint_2.publish_state(parse_float(data));
+    case 15:
+      this->max_boiler_capacity.publish_state(high_data);
+      this->min_modulation_level.publish_state(low_data);
       break;
-
-    // Temperatures
+    case 17:
+      this->relative_modulation_level.publish_state(parse_float(data));
+      break;
+    case 18:
+      this->central_heating_water_pressure.publish_state(parse_float(data));
+      break;
+    case 19:
+      this->hot_water_flow_rate.publish_state(parse_float(data));
+      break;
     case 25: {
       float temperature = parse_float(data);
       this->central_heating_temperature_1.publish_state(temperature);
@@ -518,15 +317,6 @@ void OpenthermGateway::parse_line(std::string const &line) {
       }
       break;
     }
-    case 31: {
-      float temperature = parse_float(data);
-      this->central_heating_temperature_2.publish_state(temperature);
-
-      if (_heating_circuit_2) {
-        _heating_circuit_2->_component->set_current_temperature(temperature);
-      }
-      break;
-    }
     case 26: {
       float temperature = parse_float(data);
       this->hot_water_temperature_1.publish_state(temperature);
@@ -535,18 +325,6 @@ void OpenthermGateway::parse_line(std::string const &line) {
 
       if (_hot_water != nullptr) {
         _hot_water->set_current_temperature(temperature);
-      }
-      break;
-    }
-    case 32:
-      this->hot_water_temperature_2.publish_state(parse_float(data));
-      break;
-    case 24: {
-      float temperature = parse_float(data);
-      this->room_temperature.publish_state(temperature);
-
-      if (_room_thermostat != nullptr) {
-        _room_thermostat->set_current_temperature(temperature);
       }
       break;
     }
@@ -562,31 +340,41 @@ void OpenthermGateway::parse_line(std::string const &line) {
     case 30:
       this->solar_collector_temperature.publish_state(parse_int16(data));
       break;
+    case 31: {
+      float temperature = parse_float(data);
+      this->central_heating_temperature_2.publish_state(temperature);
+
+      if (_heating_circuit_2) {
+        _heating_circuit_2->_component->set_current_temperature(temperature);
+      }
+      break;
+    }
+    case 32:
+      this->hot_water_temperature_2.publish_state(parse_float(data));
+      break;
     case 33:
       this->exhaust_temperature.publish_state(parse_int16(data));
       break;
+    case 56: {
+      float temperature = parse_float(data);
+      this->hot_water_setpoint.publish_state(temperature);
 
-    // Modulation
-    case 14:
-      this->max_relative_modulation_level.publish_state(parse_float(data));
+      if (_hot_water != nullptr) {
+        _hot_water->set_target_temperature(temperature);
+      }
       break;
-    case 15:
-      this->max_boiler_capacity.publish_state(high_data);
-      this->min_modulation_level.publish_state(low_data);
+    }
+    case 57: {
+      double temperature = parse_float(data);
+      this->max_central_heating_setpoint.publish_state(temperature);
+      if (_heating_circuit_1) {
+        _heating_circuit_1->_component->set_max_temperature(temperature);
+      }
+      if (_heating_circuit_2) {
+        _heating_circuit_2->_component->set_max_temperature(temperature);
+      }
       break;
-    case 17:
-      this->relative_modulation_level.publish_state(parse_float(data));
-      break;
-
-    // Water
-    case 18:
-      this->central_heating_water_pressure.publish_state(parse_float(data));
-      break;
-    case 19:
-      this->hot_water_flow_rate.publish_state(parse_float(data));
-      break;
-
-    // Starts
+    }
     case 116:
       this->central_heating_burner_starts.publish_state(data);
       break;
@@ -599,8 +387,6 @@ void OpenthermGateway::parse_line(std::string const &line) {
     case 119:
       this->hot_water_burner_starts.publish_state(data);
       break;
-
-    // Operation hours
     case 120:
       this->central_heating_burner_operation_time.publish_state(data);
       break;
@@ -613,18 +399,257 @@ void OpenthermGateway::parse_line(std::string const &line) {
     case 123:
       this->hot_water_burner_operation_time.publish_state(data);
       break;
-
-    // Config
-    case 124:
-      this->master_opentherm_version.publish_state(std::to_string(parse_float(data)));
-      break;
     case 125:
       this->slave_opentherm_version.publish_state(std::to_string(parse_float(data)));
       break;
-
     default:
-      ESP_LOGW("otgw", "Unsupported data id: %d (%s)", data_type, line.c_str());
+      return false;
+  }
+  return true;
+}
+
+bool OpenthermGateway::handle_master_request(uint8_t data_type, uint16_t data) {
+  switch (data_type) {
+    case 16: {
+      float temperature = parse_float(data);
+      this->room_setpoint_1.publish_state(temperature);
+
+      if (_room_thermostat != nullptr) {
+        _room_thermostat->set_target_temperature(temperature);
+      }
       break;
+    }
+    case 23:
+      this->room_setpoint_2.publish_state(parse_float(data));
+      break;
+    case 24: {
+      float temperature = parse_float(data);
+      this->room_temperature.publish_state(temperature);
+
+      if (_room_thermostat != nullptr) {
+        _room_thermostat->set_current_temperature(temperature);
+      }
+      break;
+    }
+    case 27:
+      this->outside_temperature.publish_state(parse_float(data));
+      break;
+    case 124:
+      this->master_opentherm_version.publish_state(std::to_string(parse_float(data)));
+      break;
+    default:
+      return false;
+  }
+  return true;
+}
+
+bool OpenthermGateway::handle_gateway_response(uint8_t data_type, uint16_t data) {
+  switch (data_type) {
+    case 9: {
+      if (_room_thermostat != nullptr) {
+        if (parse_float(data) == 0) {
+          _room_thermostat->set_mode(climate::ClimateMode::CLIMATE_MODE_AUTO);
+        } else {
+          _room_thermostat->set_mode(climate::ClimateMode::CLIMATE_MODE_HEAT);
+        }
+      }
+    }
+    default:
+      return false;
+  }
+  return true;
+}
+
+bool OpenthermGateway::handle_transaction(OpenthermGateway::Transaction const &transaction) {
+  ESP_LOGI("otgw", "Received %d,%d %s transaction:", transaction.master_data_type, transaction.slave_data_type, transaction.message_type == Transaction::READ ? "read" : "write");
+  if (transaction.data[Transaction::TH_REQUEST])
+    ESP_LOGI("otgw", "  T: %d", *transaction.data[Transaction::TH_REQUEST]);
+  if (transaction.data[Transaction::GA_REQUEST])
+    ESP_LOGI("otgw", "  R: %d", *transaction.data[Transaction::GA_REQUEST]);
+  if (transaction.data[Transaction::CH_RESPONSE])
+    ESP_LOGI("otgw", "  B: %d", *transaction.data[Transaction::CH_RESPONSE]);
+  if (transaction.data[Transaction::GA_RESPONSE])
+    ESP_LOGI("otgw", "  A: %d", *transaction.data[Transaction::GA_RESPONSE]);
+
+  if (!transaction.valid) {
+    return true;
+  }
+
+  bool handled = false;
+
+  if (
+    transaction.message_type == Transaction::READ ||
+    // These are commands, the heater will send the value back to the thermostat
+    transaction.slave_data_type == 1 ||
+    transaction.slave_data_type == 8 ||
+    transaction.slave_data_type == 14
+  ) {
+    auto data = transaction.data[Transaction::CH_RESPONSE];
+    if (data) {
+      handled = handle_slave_response(transaction.slave_data_type, *data) || handled;
+    }
+    data = transaction.data[Transaction::GA_RESPONSE];
+    if (data) {
+      handled = handle_gateway_response(transaction.master_data_type, *data) || handled;
+    }
+  } else {
+    auto data = transaction.data[Transaction::TH_REQUEST];
+    if (data) {
+      handled = handle_master_request(transaction.master_data_type, *data) || handled;
+    }
+  }
+
+  return handled;
+}
+
+void OpenthermGateway::parse_line(std::string const &line) {
+  ESP_LOGD("otgw", "< %s", line.c_str());
+  if (line.size() >= 3 && line[2] == ':') {
+    parse_command_response(line);
+    return;
+  }
+
+  if (_send_command) {
+    if (_lines_since_command > 3) {
+      ESP_LOGE("otgw", "Did not receive a reply to command (%s).", _send_command->c_str());
+      if (_command_queue.size() < MAX_COMMAND_QUEUE_LENGTH)
+        _command_queue.push_back(*_send_command);
+      _send_command.reset();
+    } else {
+      _lines_since_command++;
+    }
+  }
+
+  if (line.size() != 9) {
+    ESP_LOGE("otgw", "Received line (%s) is not 9 characters", line.c_str());
+    return;
+  }
+
+  unsigned long message = strtoul(line.substr(1, 8).c_str(), nullptr, 16);
+  uint8_t message_type = (message >> 28) & 0b0111;
+  uint8_t data_type = (message >> 16) & 0xFF;
+  uint16_t data = message & 0xFFFF;
+  Transaction::Step transaction_step;
+  switch (line[0]) {
+    case 'T':
+      transaction_step = Transaction::TH_REQUEST;
+      break;
+    case 'R':
+      transaction_step = Transaction::GA_REQUEST;
+      break;
+    case 'B':
+      transaction_step = Transaction::CH_RESPONSE;
+      break;
+    case 'A':
+      transaction_step = Transaction::GA_RESPONSE;
+      break;
+    default:
+      ESP_LOGE("otgw", "Received line (%s) does not start with B, T, R, or A", line.c_str());
+      return;
+  }
+
+
+  bool request = transaction_step <= Transaction::GA_REQUEST;
+  optional<Transaction::Type> transaction_type;
+  bool valid = true;
+  bool supported = true;
+  if (request) {
+    switch (message_type) {
+      case 0b0000:  // READ
+        transaction_type = Transaction::READ;
+        break;
+      case 0b0001:  // WRITE
+        transaction_type = Transaction::WRITE;
+        break;
+      case 0b0010:  // INVALID-DATA
+        // This means that this message is required to be sent but not valid
+        // in this particular situation
+        ESP_LOGW("otgw", "MSG %d: invalid data", data_type);
+        valid = false;
+        break;
+      case 0b0011:  // reserved
+        valid = false;
+        break;
+      default:
+        ESP_LOGE("otgw", "Received line (%s) message type and transaction step does not match", line.c_str());
+        valid = false;
+        break;
+    }
+  } else {
+    switch (message_type) {
+      case 0b0100:  // READ-ACK
+        transaction_type = Transaction::READ;
+        break;
+      case 0b0101:  // WRITE-ACK
+        transaction_type = Transaction::WRITE;
+        break;
+      case 0b0110: { // DATA-INVALID
+        ESP_LOGE("otgw", "MSG %d: data invalid", data_type);
+        supported = false;
+        break;
+      }
+      case 0b0111: { // UNKNOWN-DATAID
+        ESP_LOGE("otgw", "MSG %d: unknown dataid", data_type);
+        supported = false;
+        break;
+      }
+      default:
+        ESP_LOGE("otgw", "Received line (%s) message type and transaction step does not match", line.c_str());
+        valid = false;
+        break;  // Does not contain interesting data
+    }
+  }
+
+  // Check if this is the start of a new transaction
+  if (_current_transaction) {
+    if (
+      (transaction_type && *transaction_type != _current_transaction->message_type) ||
+      transaction_step <= _last_transaction_step
+    ) {
+      if (!handle_transaction(*_current_transaction)) {
+        ESP_LOGW("otgw", "Unsupported data id: %d (%s)", _current_transaction->master_data_type, line.c_str());
+      }
+      _current_transaction.reset();
+    } else if (
+      transaction_step == Transaction::CH_RESPONSE &&
+      _current_transaction->slave_data_type != data_type
+    ) {
+      _current_transaction.reset();
+      ESP_LOGE("otgw", "Type of line (%s) does not match that of transaction (%d)", line.c_str(), _current_transaction->slave_data_type);
+    } else if (
+      transaction_step == Transaction::GA_RESPONSE &&
+      _current_transaction->master_data_type != data_type
+    ) {
+      _current_transaction.reset();
+      ESP_LOGE("otgw", "Type of line (%s) does not match that of transaction (%d)", line.c_str(), _current_transaction->master_data_type);
+    }
+  }
+
+  // If this is a new transaction
+  if (!_current_transaction && request && transaction_type) {
+    _current_transaction = Transaction{};
+    _current_transaction->message_type = *transaction_type;
+    _current_transaction->slave_data_type = data_type;
+    _current_transaction->master_data_type = data_type;
+  }
+
+  if (_current_transaction) {
+    // The gateway can change the request to slot in for an unknown dataid
+    if (transaction_step == Transaction::GA_REQUEST) {
+      _current_transaction->slave_data_type = data_type;
+    }
+
+    _current_transaction->valid = _current_transaction->valid && valid;
+    _current_transaction->supported = _current_transaction->supported && supported;
+    if (supported && valid) {
+      _current_transaction->data[transaction_step] = data;
+    }
+  }
+
+  _last_transaction_step = transaction_step;
+
+  if (message_type != 0b0001 && message_type != 0b0100) {
+    return;
   }
 }
 
