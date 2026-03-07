@@ -33,9 +33,9 @@ bool OpenthermGateway::is_error(std::string const &command_code) {
   return true;
 }
 
-bool OpenthermGateway::queue_command(char const *command, char const *parameter) {
+bool OpenthermGateway::queue_command(char const *command, std::string const &parameter) {
   if (_command_queue.size() == MAX_COMMAND_QUEUE_LENGTH) {
-    ESP_LOGE("otgw", "Failed to send %s=%s because the queue is full", command, parameter);
+    ESP_LOGE("otgw", "Failed to send %s=%s because the queue is full", command, parameter.c_str());
     return false;
   }
 
@@ -58,10 +58,27 @@ void OpenthermGateway::setup() {
   pic_reset.pin_mode(gpio::Flags::FLAG_INPUT);
 
   // Get gateway info
-  queue_command("PM", "125");
   queue_command("PR", "A");
   queue_command("PR", "B");
   queue_command("PR", "Q");
+
+  // There are data types for which it is not important if the heater actually gets them.
+  // As such, we can reuse the slots for those for other purposes.
+  if (_reuse_master_slots) {
+    queue_command("UI", RoomSetpoint::as_str());
+    queue_command("UI", RoomSetpoint2::as_str());
+    queue_command("UI", RoomTemperature::as_str());
+    queue_command("UI", RoomTemperatureCH2::as_str());
+    queue_command("UI", MasterOpenThermVersion::as_str());
+    queue_command("UI", MasterProductVersion::as_str());
+  } else {
+    queue_command("KI", RoomSetpoint::as_str());
+    queue_command("KI", RoomSetpoint2::as_str());
+    queue_command("KI", RoomTemperature::as_str());
+    queue_command("KI", RoomTemperatureCH2::as_str());
+    queue_command("KI", MasterOpenThermVersion::as_str());
+    queue_command("KI", MasterProductVersion::as_str());
+  }
 }
 
 void OpenthermGateway::read_available() {
@@ -758,6 +775,10 @@ void OpenthermGateway::set_heating_circuit_1(OpenthermGatewayClimate *clim) {
 void OpenthermGateway::set_heating_circuit_2(OpenthermGatewayClimate *clim) {
   _heating_circuit_2 = HeatingCircuit{0, clim, "C2", "H2"};
   _heating_circuit_2->set_callbacks(*this);
+}
+
+void OpenthermGateway::reuse_master_slots(bool reuse_slots) {
+  _reuse_master_slots = reuse_slots;
 }
 
 void OpenthermGateway::set_outside_temperature_override(sensor::Sensor *sens) {
