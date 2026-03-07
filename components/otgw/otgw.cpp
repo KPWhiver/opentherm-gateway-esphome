@@ -460,50 +460,132 @@ bool OpenthermGateway::handle_gateway_response(uint8_t data_type, uint16_t data)
   return true;
 }
 
-bool OpenthermGateway::handle_transaction(OpenthermGateway::Transaction const &transaction) {
-  ESP_LOGI("otgw", "Received %d,%d %s transaction:", transaction.master_data_type, transaction.slave_data_type, transaction.message_type == Transaction::READ ? "read" : "write");
-  if (transaction.data[Transaction::TH_REQUEST])
-    ESP_LOGI("otgw", "  T: %d", *transaction.data[Transaction::TH_REQUEST]);
-  if (transaction.data[Transaction::GA_REQUEST])
-    ESP_LOGI("otgw", "  R: %d", *transaction.data[Transaction::GA_REQUEST]);
-  if (transaction.data[Transaction::CH_RESPONSE])
-    ESP_LOGI("otgw", "  B: %d", *transaction.data[Transaction::CH_RESPONSE]);
-  if (transaction.data[Transaction::GA_RESPONSE])
-    ESP_LOGI("otgw", "  A: %d", *transaction.data[Transaction::GA_RESPONSE]);
-
-  if (!transaction.valid) {
-    return true;
+void OpenthermGateway::handle_transaction(OpenthermGateway::Transaction const &transaction) {
+  ESP_LOGI("otgw", "Received %d,%d transaction:", transaction.master_data_type, transaction.slave_data_type);
+  for (uint8_t step = 0; step != 4; ++step) {
+    auto message = transaction.data[step];
+    if (message) {
+      ESP_LOGI("otgw", "  %c, %s: %d", Transaction::STEP[step], Transaction::MESSAGE_TYPE[message->message_type], message->data);
+    }
   }
 
-  bool handled = false;
+  if (transaction.master_data_type != transaction.slave_data_type) {
+    // In this case we are really dealing with two transactions
 
-  if (
-    transaction.message_type == Transaction::READ ||
-    // These are commands, the heater will send the value back to the thermostat
-    transaction.slave_data_type == 1 ||
-    transaction.slave_data_type == 8 ||
-    transaction.slave_data_type == 14
-  ) {
-    auto data = transaction.data[Transaction::CH_RESPONSE];
-    if (data) {
-      handled = handle_slave_response(transaction.slave_data_type, *data) || handled;
+    auto data = transaction.data;
+    data[Transaction::GA_REQUEST].reset();
+    data[Transaction::CH_RESPONSE].reset();
+    handle_transaction_messages(transaction.master_data_type, data);
+
+    data = transaction.data;
+    data[Transaction::TH_REQUEST].reset();
+    data[Transaction::GA_RESPONSE].reset();
+    handle_transaction_messages(transaction.slave_data_type, data);
+  } else {
+    handle_transaction_messages(transaction.master_data_type, transaction.data);
+  }
+}
+
+void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermGateway::Transaction::Messages data) {
+  optional<bool> read_transaction;
+  bool supported = true;
+  for (uint8_t step = 0; step != 4; ++step) {
+    auto message = data[step];
+    if (!message) {
+      continue;
     }
-    data = transaction.data[Transaction::GA_RESPONSE];
-    if (data) {
-      handled = handle_gateway_response(transaction.master_data_type, *data) || handled;
+
+    bool step_request = step <= Transaction::GA_REQUEST;
+    bool message_type_request = message->message_type <= Transaction::RESERVED;
+    if (step_request != message_type_request) {
+      ESP_LOGE("otgw", "Received line message type (%d) and transaction step (%d) does not match", message->message_type, step);
+      return;
+    }
+
+    optional<bool> read_message;
+    switch (message->message_type) {
+      case Transaction::READ_DATA:
+        read_message = true;
+        break;
+      case Transaction::WRITE_DATA:
+        read_message = false;
+        break;
+      case Transaction::INVALID_DATA:
+        // This means that this message is required to be sent but not valid
+        // in this particular situation
+        ESP_LOGW("otgw", "MSG %d: invalid data", data_type);
+        return;
+      case Transaction::RESERVED:
+        return;
+
+      case Transaction::READ_ACK:
+        read_message = true;
+        break;
+      case Transaction::WRITE_ACK:
+        read_message = false;
+        break;
+      case Transaction::DATA_INVALID:
+        ESP_LOGW("otgw", "MSG %d: data invalid", data_type);
+        supported = false;
+        message.reset();
+        break;
+      case Transaction::UNKNOWN_DATAID:
+        ESP_LOGW("otgw", "MSG %d: unknown dataid", data_type);
+        supported = false;
+        message.reset();
+        break;
+      default:
+        ESP_LOGE("otgw", "Received unknown message type %d", message->message_type);
+        return;
+    }
+
+    if (read_message) {
+      if (!read_transaction) {
+        read_transaction = read_message;
+      } else if (*read_message != *read_transaction) {
+        ESP_LOGE("otgw",
+          "Received %s transaction contains conflicting message type %d",
+          *read_transaction ? "READ" : "WRITE", message->message_type
+        );
+      }
+    }
+  }
+
+  if (!read_transaction) {
+    ESP_LOGE("otgw", "Couldn't deduce message READ or write from transaction %d", data_type);
+    return;
+  }
+
+  // Count the number of consecutive failures, this will then be used to determine if it should be
+  // reported as unknown
+  DataTypeInfo& info = _data_types[data_type];
+  if (!supported) {
+    info.consecutive_failures += 1;
+  }
+
+  // Data types 1, 8, and 14 are commands, the heater will send the value back to the thermostat,
+  // so we can get the relevant data from the heater response
+  bool treat_as_read_transaction = *read_transaction || data_type == 1 || data_type == 8 || data_type == 14;
+
+  if (treat_as_read_transaction) {
+    auto data_value = data[Transaction::CH_RESPONSE];
+    if (data_value) {
+      handle_slave_response(data_type, data_value->data);
+    }
+    data_value = data[Transaction::GA_RESPONSE];
+    if (data_value) {
+      handle_gateway_response(data_type, data_value->data);
     }
   } else {
-    auto data = transaction.data[Transaction::TH_REQUEST];
-    if (data) {
-      handled = handle_master_request(transaction.master_data_type, *data) || handled;
+    auto data_value = data[Transaction::TH_REQUEST];
+    if (data_value) {
+      handle_master_request(data_type, data_value->data);
     }
   }
-
-  return handled;
 }
 
 void OpenthermGateway::parse_line(std::string const &line) {
-  ESP_LOGD("otgw", "< %s", line.c_str());
+  ESP_LOGD("otgw", "Received line %s", line.c_str());
   if (line.size() >= 3 && line[2] == ':') {
     parse_command_response(line);
     return;
@@ -529,6 +611,8 @@ void OpenthermGateway::parse_line(std::string const &line) {
   uint8_t message_type = (message >> 28) & 0b0111;
   uint8_t data_type = (message >> 16) & 0xFF;
   uint16_t data = message & 0xFFFF;
+  ESP_LOGD("otgw", "  Data type %d: %s", data_type, Transaction::MESSAGE_TYPE[message_type]);
+
   Transaction::Step transaction_step;
   switch (line[0]) {
     case 'T':
@@ -548,67 +632,10 @@ void OpenthermGateway::parse_line(std::string const &line) {
       return;
   }
 
-
-  bool request = transaction_step <= Transaction::GA_REQUEST;
-  optional<Transaction::Type> transaction_type;
-  bool valid = true;
-  bool supported = true;
-  if (request) {
-    switch (message_type) {
-      case 0b0000:  // READ
-        transaction_type = Transaction::READ;
-        break;
-      case 0b0001:  // WRITE
-        transaction_type = Transaction::WRITE;
-        break;
-      case 0b0010:  // INVALID-DATA
-        // This means that this message is required to be sent but not valid
-        // in this particular situation
-        ESP_LOGW("otgw", "MSG %d: invalid data", data_type);
-        valid = false;
-        break;
-      case 0b0011:  // reserved
-        valid = false;
-        break;
-      default:
-        ESP_LOGE("otgw", "Received line (%s) message type and transaction step does not match", line.c_str());
-        valid = false;
-        break;
-    }
-  } else {
-    switch (message_type) {
-      case 0b0100:  // READ-ACK
-        transaction_type = Transaction::READ;
-        break;
-      case 0b0101:  // WRITE-ACK
-        transaction_type = Transaction::WRITE;
-        break;
-      case 0b0110: { // DATA-INVALID
-        ESP_LOGE("otgw", "MSG %d: data invalid", data_type);
-        supported = false;
-        break;
-      }
-      case 0b0111: { // UNKNOWN-DATAID
-        ESP_LOGE("otgw", "MSG %d: unknown dataid", data_type);
-        supported = false;
-        break;
-      }
-      default:
-        ESP_LOGE("otgw", "Received line (%s) message type and transaction step does not match", line.c_str());
-        valid = false;
-        break;  // Does not contain interesting data
-    }
-  }
-
   // Check if this is the start of a new transaction
   if (_current_transaction) {
-    if (
-      (transaction_type && *transaction_type != _current_transaction->message_type) ||
-      transaction_step <= _last_transaction_step
-    ) {
-      if (!handle_transaction(*_current_transaction)) {
-        ESP_LOGW("otgw", "Unsupported data id: %d (%s)", _current_transaction->master_data_type, line.c_str());
-      }
+    if (transaction_step <= _last_transaction_step) {
+      handle_transaction(*_current_transaction);
       _current_transaction.reset();
     } else if (
       transaction_step == Transaction::CH_RESPONSE &&
@@ -626,9 +653,8 @@ void OpenthermGateway::parse_line(std::string const &line) {
   }
 
   // If this is a new transaction
-  if (!_current_transaction && request && transaction_type) {
+  if (!_current_transaction && transaction_step <= Transaction::GA_REQUEST) {
     _current_transaction = Transaction{};
-    _current_transaction->message_type = *transaction_type;
     _current_transaction->slave_data_type = data_type;
     _current_transaction->master_data_type = data_type;
   }
@@ -639,18 +665,10 @@ void OpenthermGateway::parse_line(std::string const &line) {
       _current_transaction->slave_data_type = data_type;
     }
 
-    _current_transaction->valid = _current_transaction->valid && valid;
-    _current_transaction->supported = _current_transaction->supported && supported;
-    if (supported && valid) {
-      _current_transaction->data[transaction_step] = data;
-    }
+    _current_transaction->data[transaction_step] = Transaction::Message{Transaction::MessageType{message_type}, data};
   }
 
   _last_transaction_step = transaction_step;
-
-  if (message_type != 0b0001 && message_type != 0b0100) {
-    return;
-  }
 }
 
 void OpenthermGateway::loop() {

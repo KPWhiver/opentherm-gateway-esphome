@@ -32,7 +32,7 @@ class OptionalComponent {
   }
 };
 
-template<typename ComponentType, uint16_t data_Type>
+template<typename ComponentType, uint8_t data_Type>
 class OptionalSlaveComponent : public OptionalComponent<ComponentType> {};
 
 class OpenthermGateway : public Component, public uart::UARTDevice {
@@ -45,16 +45,39 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
       CH_RESPONSE = 2,
       GA_RESPONSE = 3,
     };
-    enum Type {
-      READ,
-      WRITE,
+    constexpr static std::array<char, 4> STEP{'T', 'R', 'B', 'A'};
+
+    enum MessageType : uint8_t {
+      // Request
+      READ_DATA = 0b0000,
+      WRITE_DATA = 0b0001,
+      INVALID_DATA = 0b0010,
+      RESERVED = 0b0011,
+
+      // Response
+      READ_ACK = 0b0100,
+      WRITE_ACK = 0b0101,
+      DATA_INVALID = 0b0110,
+      UNKNOWN_DATAID = 0b0111,
     };
-    Type message_type;
-    bool valid = true;
-    bool supported = true;
+    constexpr static std::array<char const *, 8> MESSAGE_TYPE{
+      "READ_DATA",
+      "WRITE_DATA",
+      "INVALID_DATA",
+      "RESERVED",
+      "READ_ACK",
+      "WRITE_ACK",
+      "DATA_INVALID",
+      "UNKNOWN_DATAID",
+    };
     uint8_t master_data_type = 0;
     uint8_t slave_data_type = 0;
-    std::array<optional<uint16_t>, 4> data;
+    struct Message {
+      MessageType message_type;
+      uint16_t data;
+    };
+    using Messages = std::array<optional<Message>, 4>;
+    Messages data;
   };
   optional<Transaction> _current_transaction;
   Transaction::Step _last_transaction_step;
@@ -73,6 +96,12 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
     void refresh(OpenthermGateway &gateway);
   };
 
+  struct DataTypeInfo {
+    uint8_t consecutive_failures = 0;
+    bool interest = false;
+  };
+  std::unordered_map<uint8_t, DataTypeInfo> _data_types;
+
   ///// Components /////
   OpenthermGatewayClimate *_room_thermostat{nullptr};
   OpenthermGatewayClimate *_hot_water{nullptr};
@@ -87,8 +116,9 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   bool _hot_water_temperature_reported{false};
 
  public:
-  template<typename SensorType, uint16_t data_type>
+  template<typename SensorType, uint8_t data_type>
   void set_sensor(OptionalSlaveComponent<SensorType, data_type> &var, SensorType *sens) {
+    _data_types[data_type].interest = true;
     var.set(sens);
   }
 
@@ -197,7 +227,8 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   bool is_error(std::string const &command_code);
   bool queue_command(char const *command, char const *parameter);
   void parse_command_response(std::string const &line);
-  bool handle_transaction(Transaction const &transaction);
+  void handle_transaction(Transaction const &transaction);
+  void handle_transaction_messages(uint8_t data_type, Transaction::Messages data);
   bool handle_slave_response(uint8_t data_type, uint16_t data);
   bool handle_master_request(uint8_t data_type, uint16_t data);
   bool handle_gateway_response(uint8_t data_type, uint16_t data);
