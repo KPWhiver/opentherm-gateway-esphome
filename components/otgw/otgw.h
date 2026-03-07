@@ -111,6 +111,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   optional<HeatingCircuit> _heating_circuit_1;
   optional<HeatingCircuit> _heating_circuit_2;
 
+  bool _reuse_master_slots;
   sensor::Sensor *_outside_temperature_override{nullptr};
   time::RealTimeClock *_time_source{nullptr};
 
@@ -215,6 +216,8 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   void set_reset_service_request_button(OpenthermGatewayButton *butt);
   void set_hot_water_push_button(OpenthermGatewayButton *butt);
 
+  void reuse_master_slots(bool reuse_slots);
+
  protected:
   static constexpr uint16_t MAX_BUFFER_SIZE = 128;
   std::string _receive_buffer;
@@ -229,7 +232,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   int16_t parse_int16(uint16_t data);
   int8_t parse_int8(uint8_t data);
   bool is_error(std::string const &command_code);
-  bool queue_command(char const *command, char const *parameter);
+  bool queue_command(char const *command, std::string const &parameter);
   void parse_command_response(std::string const &line);
   void handle_transaction(Transaction const &transaction);
   void handle_transaction_messages(uint8_t data_type, Transaction::Messages data);
