@@ -62,6 +62,10 @@ void OpenthermGatewayClimate::set_max_temperature(float temperature) {
   _traits.set_visual_max_temperature(temperature);
 }
 
+void OpenthermGatewayClimate::set_min_temperature(float temperature) {
+  _traits.set_visual_min_temperature(temperature);
+}
+
 void OpenthermGatewayClimate::set_current_temperature(float temperature) {
   this->current_temperature = temperature;
   this->publish_state();

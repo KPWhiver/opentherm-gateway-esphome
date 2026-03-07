@@ -355,6 +355,12 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
     case ExhaustTemperature::ID:
       this->exhaust_temperature.publish_state(parse_int16(data));
       break;
+    case DHWSetpointBounds::ID:
+      if (_hot_water != nullptr) {
+        _hot_water->set_max_temperature(high_data);
+        _hot_water->set_min_temperature(low_data);
+      }
+      break;
     case DHWSetpoint::ID: {
       float temperature = parse_float(data);
       this->hot_water_setpoint.publish_state(temperature);

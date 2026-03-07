@@ -20,6 +20,7 @@ class OpenthermGatewayClimate : public Component, public climate::Climate {
   void set_cooling_supported(bool supported);
   void set_target_temperature(float temperature);
   void set_max_temperature(float temperature);
+  void set_min_temperature(float temperature);
   void set_current_temperature(float temperature);
 
   void set_mode(climate::ClimateMode mode);
