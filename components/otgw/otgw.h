@@ -97,8 +97,9 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
     void refresh(OpenthermGateway &gateway);
   };
 
+  // Information to keep track of which data types are available
   struct DataTypeInfo {
-    uint8_t consecutive_failures = 0;
+    optional<uint8_t> consecutive_failures = 0;
     bool interest = false;
   };
   std::unordered_map<uint8_t, DataTypeInfo> _data_types;

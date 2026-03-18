@@ -553,8 +553,11 @@ void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermG
         message.reset();
         break;
       case Transaction::UNKNOWN_DATAID:
-        ESP_LOGW("otgw", "MSG %d: unknown dataid", data_type);
-        supported = false;
+        if (step != Transaction::GA_RESPONSE) {
+          // This just means the gateway has overriden the request, not really an error
+          ESP_LOGW("otgw", "MSG %d: unknown dataid", data_type);
+          supported = false;
+        }
         message.reset();
         break;
       default:
@@ -583,12 +586,31 @@ void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermG
   // reported as unknown
   DataTypeInfo& info = _data_types[data_type];
   if (!supported) {
-    info.consecutive_failures += 1;
+    info.consecutive_failures = min(info.consecutive_failures.value_or(0) + 1, 10);
+  } else {
+    info.consecutive_failures = 0;
   }
+  ESP_LOGD("otgw", "Consecutive failues for %d: %d", data_type, *info.consecutive_failures);
 
   // Data types 1, 8, and 14 are commands, the heater will send the value back to the thermostat,
   // so we can get the relevant data from the heater response
-  bool treat_as_read_transaction = *read_transaction || data_type == 1 || data_type == 8 || data_type == 14;
+  bool treat_as_read_transaction = *read_transaction || data_type == Status::ID ||
+    data_type == ControlSetpoint::ID || data_type == ControlSetpoint2::ID;
+
+  if (info.consecutive_failures.value_or(0) >= 3) {
+    // Tell the gateway that we are not interested in this data type
+    std::string data_type_as_str = std::to_string(static_cast<uint16_t>(data_type));
+    queue_command("UI", data_type_as_str);
+
+    if (*read_transaction) {
+      queue_command("DA", data_type_as_str);
+    }
+
+    // Write transactions can still contain interesting data and should be parsed
+    if (treat_as_read_transaction) {
+      return;
+    }
+  }
 
   if (treat_as_read_transaction) {
     auto data_value = data[Transaction::CH_RESPONSE];
