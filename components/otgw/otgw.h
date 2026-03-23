@@ -103,6 +103,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
     bool interest = false;
   };
   std::unordered_map<uint8_t, DataTypeInfo> _data_types;
+  void set_interest(uint8_t data_type);
 
   ///// Components /////
   OpenthermGatewayClimate *_room_thermostat{nullptr};
@@ -121,7 +122,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
  public:
   template<typename SensorType, typename DataType>
   void set_sensor(OptionalOTComponent<SensorType, DataType> &var, SensorType *sens) {
-    _data_types[DataType::ID].interest = true;
+    set_interest(DataType::ID);
     var.set(sens);
   }
 

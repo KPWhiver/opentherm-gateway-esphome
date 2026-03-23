@@ -201,4 +201,4 @@ async def to_code(config):
         id = conf[CONF_ID]
         if id and id.type == sensor.Sensor:
             sens = await sensor.new_sensor(conf)
-            cg.add(getattr(hub, f"{key}.set")(sens))
+            cg.add(getattr(hub, f"set_sensor({hub}->{key}, {sens})"))

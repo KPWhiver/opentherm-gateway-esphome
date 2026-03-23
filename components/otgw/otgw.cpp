@@ -24,7 +24,7 @@ bool OpenthermGateway::is_error(std::string const &command_code) {
   else if (command_code == "NS")
     ESP_LOGE("otgw", "The alternative Data-ID could not be added because the table is full.");
   else if (command_code == "NF")
-    ESP_LOGE("otgw", "The specified alternative Data-ID could not be removed because it does not exist in the table.");
+    ESP_LOGI("otgw", "The specified alternative Data-ID could not be removed because it does not exist in the table.");
   else if (command_code == "OE")
     ESP_LOGE("otgw", "The processor was busy and failed to process all received characters.");
   else
@@ -61,24 +61,6 @@ void OpenthermGateway::setup() {
   queue_command("PR", "A");
   queue_command("PR", "B");
   queue_command("PR", "Q");
-
-  // There are data types for which it is not important if the heater actually gets them.
-  // As such, we can reuse the slots for those for other purposes.
-  if (_reuse_master_slots) {
-    queue_command("UI", RoomSetpoint::as_str());
-    queue_command("UI", RoomSetpoint2::as_str());
-    queue_command("UI", RoomTemperature::as_str());
-    queue_command("UI", RoomTemperatureCH2::as_str());
-    queue_command("UI", MasterOpenThermVersion::as_str());
-    queue_command("UI", MasterProductVersion::as_str());
-  } else {
-    queue_command("KI", RoomSetpoint::as_str());
-    queue_command("KI", RoomSetpoint2::as_str());
-    queue_command("KI", RoomTemperature::as_str());
-    queue_command("KI", RoomTemperatureCH2::as_str());
-    queue_command("KI", MasterOpenThermVersion::as_str());
-    queue_command("KI", MasterProductVersion::as_str());
-  }
 }
 
 void OpenthermGateway::read_available() {
@@ -266,7 +248,7 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
       }
       break;
     }
-    case MasterConfiguration::ID: {
+    case SlaveConfiguration::ID: {
       std::bitset<8> slave_configuration(high_data);
       if (_room_thermostat != nullptr) {
         _room_thermostat->set_cooling_supported(slave_configuration[2]);
@@ -440,10 +422,18 @@ bool OpenthermGateway::handle_master_request(uint8_t data_type, uint16_t data) {
       if (_room_thermostat != nullptr) {
         _room_thermostat->set_target_temperature(temperature);
       }
+
+      if (_reuse_master_slots) {
+        queue_command("UI", RoomSetpoint::as_str());
+      }
       break;
     }
     case RoomSetpoint2::ID:
       this->room_setpoint_2.publish_state(parse_float(data));
+
+      if (_reuse_master_slots) {
+        queue_command("UI", RoomSetpoint2::as_str());
+      }
       break;
     case RoomTemperature::ID: {
       float temperature = parse_float(data);
@@ -452,13 +442,32 @@ bool OpenthermGateway::handle_master_request(uint8_t data_type, uint16_t data) {
       if (_room_thermostat != nullptr) {
         _room_thermostat->set_current_temperature(temperature);
       }
+
+      if (_reuse_master_slots) {
+        queue_command("UI", RoomTemperature::as_str());
+      }
       break;
     }
+    case RoomTemperatureCH2::ID:
+      if (_reuse_master_slots) {
+        queue_command("UI", RoomTemperatureCH2::as_str());
+      }
+      break;
     case OutsideTemperature::ID:
       this->outside_temperature.publish_state(parse_float(data));
       break;
     case MasterOpenThermVersion::ID:
       this->master_opentherm_version.publish_state(std::to_string(parse_float(data)));
+
+      if (_reuse_master_slots) {
+        queue_command("UI", MasterOpenThermVersion::as_str());
+      }
+      break;
+    case MasterProductVersion::ID:
+      if (_reuse_master_slots) {
+        queue_command("UI", MasterProductVersion::as_str());
+      }
+
       break;
     default:
       return false;
@@ -597,7 +606,7 @@ void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermG
   bool treat_as_read_transaction = *read_transaction || data_type == Status::ID ||
     data_type == ControlSetpoint::ID || data_type == ControlSetpoint2::ID;
 
-  if (info.consecutive_failures.value_or(0) >= 3) {
+  if ((*read_transaction && !info.interest) || info.consecutive_failures.value_or(0) >= 3) {
     // Tell the gateway that we are not interested in this data type
     std::string data_type_as_str = std::to_string(static_cast<uint16_t>(data_type));
     queue_command("UI", data_type_as_str);
@@ -734,6 +743,16 @@ void OpenthermGateway::loop() {
   read_available();
 }
 
+void OpenthermGateway::set_interest(uint8_t data_type) {
+  std::string data_type_as_str = std::to_string(static_cast<uint16_t>(data_type));
+  queue_command("KI", data_type_as_str);
+
+  // This is to prevent adding data types multiple times
+  queue_command("DA", data_type_as_str);
+
+  _data_types[data_type].interest = true;
+}
+
 void OpenthermGateway::set_room_thermostat(OpenthermGatewayClimate *clim) {
   _room_thermostat = clim;
 
@@ -757,6 +776,12 @@ void OpenthermGateway::set_room_thermostat(OpenthermGatewayClimate *clim) {
   };
 
   _room_thermostat->set_callbacks(callback, callback);
+
+  set_interest(Status::ID);
+  set_interest(SlaveConfiguration::ID);
+  set_interest(RoomSetpoint::ID);
+  set_interest(RoomTemperature::ID);
+  set_interest(RemoteOverrideRoomSetpoint::ID);
 }
 
 void OpenthermGateway::set_hot_water(OpenthermGatewayClimate *clim) {
@@ -787,16 +812,36 @@ void OpenthermGateway::set_hot_water(OpenthermGatewayClimate *clim) {
         break;
     }
   });
+
+  set_interest(Status::ID);
+  set_interest(SlaveConfiguration::ID);
+  set_interest(BoilerFlowWaterTemperature::ID);
+  set_interest(DHWTemperature::ID);
+  set_interest(DHWSetpointBounds::ID);
+  set_interest(DHWSetpoint::ID);
 }
 
 void OpenthermGateway::set_heating_circuit_1(OpenthermGatewayClimate *clim) {
   _heating_circuit_1 = HeatingCircuit{0, clim, "CS", "CH"};
   _heating_circuit_1->set_callbacks(*this);
+
+  set_interest(Status::ID);
+  set_interest(ControlSetpoint::ID);
+  set_interest(BoilerFlowWaterTemperature::ID);
+  set_interest(MaxCHWaterSetpoint::ID);
+  set_interest(CHSetpointBounds::ID);
 }
 
 void OpenthermGateway::set_heating_circuit_2(OpenthermGatewayClimate *clim) {
   _heating_circuit_2 = HeatingCircuit{0, clim, "C2", "H2"};
   _heating_circuit_2->set_callbacks(*this);
+
+  set_interest(Status::ID);
+  set_interest(SlaveConfiguration::ID);
+  set_interest(ControlSetpoint2::ID);
+  set_interest(FlowTemperatureCH2::ID);
+  set_interest(MaxCHWaterSetpoint::ID);
+  set_interest(CHSetpointBounds::ID);
 }
 
 void OpenthermGateway::reuse_master_slots(bool reuse_slots) {
