@@ -99,11 +99,20 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
 
   // Information to keep track of which data types are available
   struct DataTypeInfo {
-    optional<uint8_t> consecutive_failures = 0;
+    uint8_t consecutive_failures = 0;
     bool interest = false;
+    bool supported = true;
+    optional<uint64_t> time_last_received;
   };
   std::unordered_map<uint8_t, DataTypeInfo> _data_types;
   void set_interest(uint8_t data_type);
+
+  struct DataTypeRequest {
+    uint8_t data_type;
+    uint64_t time_of_request;
+  };
+  optional<DataTypeRequest> _data_type_request;
+  static constexpr uint64_t DATA_TYPE_REQUEST_TIMEOUT = 5 * 60 * 1000;
 
   ///// Components /////
   OpenthermGatewayClimate *_room_thermostat{nullptr};
@@ -224,6 +233,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   static constexpr uint16_t MAX_BUFFER_SIZE = 128;
   std::string _receive_buffer;
 
+  // TODO: 20 is not enough with all the commands added at the start (2 for each data type)
   static constexpr uint16_t MAX_COMMAND_QUEUE_LENGTH = 20;
   std::vector<std::string> _command_queue;
   optional<std::string> _send_command;

@@ -522,7 +522,7 @@ void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermG
   optional<bool> read_transaction;
   bool supported = true;
   for (uint8_t step = 0; step != 4; ++step) {
-    auto message = data[step];
+    auto &message = data[step];
     if (!message) {
       continue;
     }
@@ -595,18 +595,23 @@ void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermG
   // reported as unknown
   DataTypeInfo& info = _data_types[data_type];
   if (!supported) {
-    info.consecutive_failures = min(info.consecutive_failures.value_or(0) + 1, 10);
+    info.consecutive_failures = min(info.consecutive_failures + 1, 10);
+    info.supported = false;
   } else {
     info.consecutive_failures = 0;
   }
-  ESP_LOGD("otgw", "Consecutive failues for %d: %d", data_type, *info.consecutive_failures);
+
+  info.time_last_received = millis();
+  if (_data_type_request && _data_type_request->data_type == data_type) {
+    _data_type_request.reset();
+  }
 
   // Data types 1, 8, and 14 are commands, the heater will send the value back to the thermostat,
   // so we can get the relevant data from the heater response
   bool treat_as_read_transaction = *read_transaction || data_type == Status::ID ||
     data_type == ControlSetpoint::ID || data_type == ControlSetpoint2::ID;
 
-  if ((*read_transaction && !info.interest) || info.consecutive_failures.value_or(0) >= 3) {
+  if ((*read_transaction && !info.interest) || info.consecutive_failures >= 3) {
     // Tell the gateway that we are not interested in this data type
     std::string data_type_as_str = std::to_string(static_cast<uint16_t>(data_type));
     queue_command("UI", data_type_as_str);
@@ -614,14 +619,13 @@ void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermG
     if (*read_transaction) {
       queue_command("DA", data_type_as_str);
     }
-
-    // Write transactions can still contain interesting data and should be parsed
-    if (treat_as_read_transaction) {
-      return;
-    }
   }
 
   if (treat_as_read_transaction) {
+    if (!supported) {
+      return;
+    }
+
     auto data_value = data[Transaction::CH_RESPONSE];
     if (data_value) {
       handle_slave_response(data_type, data_value->data);
@@ -733,11 +737,55 @@ void OpenthermGateway::loop() {
     write_str(_send_command->c_str());
     flush();
   } else if (!_send_command) { // Means queue is empty
+    uint64_t current_time = millis();
+
     // We do this here to avoid spamming the queue
     if (_heating_circuit_1)
       _heating_circuit_1->refresh(*this);
     if (_heating_circuit_2)
       _heating_circuit_2->refresh(*this);
+
+    if (_data_type_request) {
+      if (
+        _data_type_request->time_of_request + DATA_TYPE_REQUEST_TIMEOUT < current_time ||
+        _data_type_request->time_of_request > current_time // clock overflow
+      ) {
+        ESP_LOGD("otgw", "Did not receive data after PM=%d command", _data_type_request->data_type);
+        _data_type_request.reset();
+      }
+    } else {
+      uint64_t longest_time_since_request = 0;
+      optional<uint8_t> most_outdated_data_type;
+
+      for (auto &item : _data_types) {
+        if (!item.second.interest || !item.second.supported) {
+          continue;
+        }
+
+        if (!item.second.time_last_received) {
+          most_outdated_data_type = item.first;
+          break;
+        }
+
+        uint64_t time_since_request;
+        // Check for clock overflow
+        if (item.second.time_last_received > current_time) {
+          time_since_request = 0xFFFF'FFFF'FFFF'FFFF - *item.second.time_last_received + current_time;
+        } else {
+          time_since_request = current_time - *item.second.time_last_received;
+        }
+
+        if (time_since_request > longest_time_since_request) {
+          longest_time_since_request = time_since_request;
+          most_outdated_data_type = item.first;
+        }
+      }
+
+      if (most_outdated_data_type) {
+        _data_type_request = DataTypeRequest{*most_outdated_data_type, current_time};
+        queue_command("PM", std::to_string(static_cast<uint16_t>(*most_outdated_data_type)));
+      }
+    }
   }
 
   read_available();
