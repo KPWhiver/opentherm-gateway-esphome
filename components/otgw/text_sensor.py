@@ -28,6 +28,9 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional("last_reset_cause"): text_sensor.text_sensor_schema(
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
+    cv.Optional("slave_oem_diagnostic_code"): text_sensor.text_sensor_schema(
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
 })
 
 async def to_code(config):

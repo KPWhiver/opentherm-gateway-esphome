@@ -163,6 +163,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   OptionalComponent<text_sensor::TextSensor> opentherm_gateway_version;
   OptionalComponent<text_sensor::TextSensor> opentherm_gateway_build_date;
   OptionalComponent<text_sensor::TextSensor> last_reset_cause;
+  OptionalOTComponent<text_sensor::TextSensor, data_types::OEMDiagnosticCode> slave_oem_diagnostic_code;
 
   // Master state
   OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> master_central_heating_1;
@@ -194,13 +195,16 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   OptionalOTComponent<sensor::Sensor, data_types::MaxCHWaterSetpoint> max_central_heating_setpoint;
   OptionalOTComponent<sensor::Sensor, data_types::DHWSetpoint> hot_water_setpoint;
   OptionalOTComponent<sensor::Sensor, data_types::RemoteOverrideRoomSetpoint> remote_override_room_setpoint_1;
+  OptionalOTComponent<sensor::Sensor, data_types::RemoteOverrideRoomSetpoint2> remote_override_room_setpoint_2;
   OptionalOTComponent<sensor::Sensor, data_types::RoomSetpoint> room_setpoint_1;
   OptionalOTComponent<sensor::Sensor, data_types::RoomSetpoint2> room_setpoint_2;
   OptionalOTComponent<sensor::Sensor, data_types::ControlSetpoint> central_heating_setpoint_1;
   OptionalOTComponent<sensor::Sensor, data_types::ControlSetpoint2> central_heating_setpoint_2;
+  OptionalOTComponent<sensor::Sensor, data_types::CoolingControl> cooling_control;
 
   // Temperatures
   OptionalOTComponent<sensor::Sensor, data_types::RoomTemperature> room_temperature_1;
+  OptionalOTComponent<sensor::Sensor, data_types::RoomTemperatureCH2> room_temperature_2;
   OptionalOTComponent<sensor::Sensor, data_types::DHWTemperature> hot_water_temperature_1;
   OptionalOTComponent<sensor::Sensor, data_types::DHWTemperature2> hot_water_temperature_2;
   OptionalOTComponent<sensor::Sensor, data_types::BoilerFlowWaterTemperature> central_heating_temperature_1;
@@ -210,6 +214,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   OptionalOTComponent<sensor::Sensor, data_types::SolarStorageTemperature> solar_storage_temperature;
   OptionalOTComponent<sensor::Sensor, data_types::SolarCollectorTemperature> solar_collector_temperature;
   OptionalOTComponent<sensor::Sensor, data_types::ExhaustTemperature> exhaust_temperature;
+  OptionalOTComponent<sensor::Sensor, data_types::BoilerHeatExchangerTemperature> boiler_heat_exchanger_temperature;
 
   // Modulation
   OptionalOTComponent<sensor::Sensor, data_types::MaxRelativeModulationLevel> max_relative_modulation_level;
@@ -231,10 +236,19 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   OptionalOTComponent<sensor::Sensor, data_types::DHWBurnerStarts> hot_water_burner_starts;
 
   // Operation hous
+  OptionalOTComponent<sensor::Sensor, data_types::CoolingOperationHours> cooling_operation_time;
   OptionalOTComponent<sensor::Sensor, data_types::BurnerOperationHours> central_heating_burner_operation_time;
   OptionalOTComponent<sensor::Sensor, data_types::CHPumpOperationHours> central_heating_pump_operation_time;
   OptionalOTComponent<sensor::Sensor, data_types::DHWPumpOperationHours> hot_water_pump_operation_time;
   OptionalOTComponent<sensor::Sensor, data_types::DHWBurnerOperationHours> hot_water_burner_operation_time;
+
+  // Other
+  OptionalOTComponent<sensor::Sensor, data_types::NumberOfSlaveParameters> number_of_slave_parameters;
+  OptionalOTComponent<sensor::Sensor, data_types::FaultHistoryBufferSize> fault_history_buffer_size;
+  OptionalOTComponent<sensor::Sensor, data_types::BoilerFanSpeedSetpointActual> boiler_fan_speed_setpoint;
+  OptionalOTComponent<sensor::Sensor, data_types::BoilerFanSpeedSetpointActual> boiler_fan_speed;
+  OptionalOTComponent<sensor::Sensor, data_types::FlameCurrent> flame_current;
+  OptionalOTComponent<sensor::Sensor, data_types::RelativeHumidity> relative_humidity;
 
   void set_room_thermostat(OpenthermGatewayClimate *clim);
   void set_hot_water(OpenthermGatewayClimate *clim);

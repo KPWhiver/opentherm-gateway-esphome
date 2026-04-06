@@ -7,10 +7,15 @@ from esphome.const import (
     UNIT_PERCENT,
     UNIT_KILOWATT_HOURS,
     UNIT_HOUR,
+    UNIT_HERTZ,
+    UNIT_AMPERE,
     DEVICE_CLASS_TEMPERATURE,
     DEVICE_CLASS_ENERGY,
     DEVICE_CLASS_DURATION,
     DEVICE_CLASS_PRESSURE,
+    DEVICE_CLASS_SPEED,
+    DEVICE_CLASS_CURRENT,
+    DEVICE_CLASS_HUMIDITY,
     STATE_CLASS_TOTAL_INCREASING,
     STATE_CLASS_MEASUREMENT,
 )
@@ -47,6 +52,11 @@ CONFIG_SCHEMA = cv.Schema({
         accuracy_decimals=2,
         device_class=DEVICE_CLASS_TEMPERATURE,
     ),
+    cv.Optional("remote_override_room_setpoint_2"): sensor.sensor_schema(
+        unit_of_measurement=UNIT_CELSIUS,
+        accuracy_decimals=2,
+        device_class=DEVICE_CLASS_TEMPERATURE,
+    ),
     cv.Optional("room_setpoint_1"): sensor.sensor_schema(
         unit_of_measurement=UNIT_CELSIUS,
         accuracy_decimals=2,
@@ -56,6 +66,10 @@ CONFIG_SCHEMA = cv.Schema({
         unit_of_measurement=UNIT_CELSIUS,
         accuracy_decimals=2,
         device_class=DEVICE_CLASS_TEMPERATURE,
+    ),
+    cv.Optional("cooling_control"): sensor.sensor_schema(
+        unit_of_measurement=UNIT_PERCENT,
+        accuracy_decimals=2,
     ),
 
     # Temperatures
@@ -89,6 +103,12 @@ CONFIG_SCHEMA = cv.Schema({
         device_class=DEVICE_CLASS_TEMPERATURE,
         state_class=STATE_CLASS_MEASUREMENT,
     ),
+    cv.Optional("room_temperature_2"): sensor.sensor_schema(
+        unit_of_measurement=UNIT_CELSIUS,
+        accuracy_decimals=2,
+        device_class=DEVICE_CLASS_TEMPERATURE,
+        state_class=STATE_CLASS_MEASUREMENT,
+    ),
     cv.Optional("outside_temperature"): sensor.sensor_schema(
         unit_of_measurement=UNIT_CELSIUS,
         accuracy_decimals=2,
@@ -114,6 +134,12 @@ CONFIG_SCHEMA = cv.Schema({
         state_class=STATE_CLASS_MEASUREMENT,
     ),
     cv.Optional("exhaust_temperature"): sensor.sensor_schema(
+        unit_of_measurement=UNIT_CELSIUS,
+        accuracy_decimals=2,
+        device_class=DEVICE_CLASS_TEMPERATURE,
+        state_class=STATE_CLASS_MEASUREMENT,
+    ),
+    cv.Optional("boiler_heat_exchanger_temperature"): sensor.sensor_schema(
         unit_of_measurement=UNIT_CELSIUS,
         accuracy_decimals=2,
         device_class=DEVICE_CLASS_TEMPERATURE,
@@ -155,6 +181,15 @@ CONFIG_SCHEMA = cv.Schema({
     ),
 
     # Starts
+    cv.Optional("slave_power_cycles"): sensor.sensor_schema(
+        state_class=STATE_CLASS_TOTAL_INCREASING,
+    ),
+    cv.Optional("failed_burner_starts"): sensor.sensor_schema(
+        state_class=STATE_CLASS_TOTAL_INCREASING,
+    ),
+    cv.Optional("flame_signal_low_count"): sensor.sensor_schema(
+        state_class=STATE_CLASS_TOTAL_INCREASING,
+    ),
     cv.Optional("central_heating_burner_starts"): sensor.sensor_schema(
         state_class=STATE_CLASS_TOTAL_INCREASING,
     ),
@@ -169,6 +204,11 @@ CONFIG_SCHEMA = cv.Schema({
     ),
 
     # Operation hours
+    cv.Optional("cooling_operation_time"): sensor.sensor_schema(
+        unit_of_measurement=UNIT_HOUR,
+        device_class=DEVICE_CLASS_DURATION,
+        state_class=STATE_CLASS_TOTAL_INCREASING,
+    ),
     cv.Optional("central_heating_burner_operation_time"): sensor.sensor_schema(
         unit_of_measurement=UNIT_HOUR,
         device_class=DEVICE_CLASS_DURATION,
@@ -188,6 +228,31 @@ CONFIG_SCHEMA = cv.Schema({
         unit_of_measurement=UNIT_HOUR,
         device_class=DEVICE_CLASS_DURATION,
         state_class=STATE_CLASS_TOTAL_INCREASING,
+    ),
+
+    # Other
+    cv.Optional("number_of_slave_parameters"): sensor.sensor_schema(),
+    cv.Optional("fault_history_buffer_size"): sensor.sensor_schema(),
+    cv.Optional("boiler_fan_speed_setpoint"): sensor.sensor_schema(
+        unit_of_measurement=UNIT_HERTZ,
+        device_class=DEVICE_CLASS_SPEED,
+    ),
+    cv.Optional("boiler_fan_speed"): sensor.sensor_schema(
+        unit_of_measurement=UNIT_HERTZ,
+        device_class=DEVICE_CLASS_SPEED,
+        state_class=STATE_CLASS_MEASUREMENT,
+    ),
+    cv.Optional("flame_current"): sensor.sensor_schema(
+        unit_of_measurement=UNIT_AMPERE,
+        device_class=DEVICE_CLASS_CURRENT,
+        accuracy_decimals=2,
+        state_class=STATE_CLASS_MEASUREMENT,
+    ),
+    cv.Optional("relative_humidity"): sensor.sensor_schema(
+        unit_of_measurement=UNIT_PERCENT,
+        device_class=DEVICE_CLASS_HUMIDITY,
+        accuracy_decimals=2,
+        state_class=STATE_CLASS_MEASUREMENT,
     ),
 })
 
