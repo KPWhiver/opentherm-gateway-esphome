@@ -142,6 +142,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   std::optional<HeatingCircuit> _heating_circuit_2;
 
   bool _reuse_master_slots;
+  bool _ignore_heater_overrides;
   sensor::Sensor *_outside_temperature_override{nullptr};
   time::RealTimeClock *_time_source{nullptr};
 
@@ -247,6 +248,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   void set_hot_water_push_button(OpenthermGatewayButton *butt);
 
   void reuse_master_slots(bool reuse_slots);
+  void ignore_heater_overrides(bool ignore_overrides);
 
  protected:
   static constexpr uint16_t MAX_BUFFER_SIZE = 128;

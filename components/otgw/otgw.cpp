@@ -908,6 +908,10 @@ void OpenthermGateway::reuse_master_slots(bool reuse_slots) {
   _reuse_master_slots = reuse_slots;
 }
 
+void OpenthermGateway::ignore_heater_overrides(bool ignore_overrides) {
+  _ignore_heater_overrides = ignore_overrides;
+}
+
 void OpenthermGateway::set_outside_temperature_override(sensor::Sensor *sens) {
   _outside_temperature_override = sens;
   _outside_temperature_override->add_on_state_callback([this](float temperature) {
