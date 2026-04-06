@@ -15,6 +15,7 @@ otgw_ns = cg.esphome_ns.namespace('otgw')
 OpenthermGateway = otgw_ns.class_('OpenthermGateway', uart.UARTDevice, cg.Component)
 
 CONF_REUSE_MASTER_SLOTS = "reuse_master_slots"
+CONF_IGNORE_HEATER_OVERRIDES = "ignore_heater_overrides"
 CONF_OUTSIDE_TEMPERATURE = "outside_temperature"
 CONF_TIME_SOURCE = "time_source"
 
@@ -22,6 +23,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(OpenthermGateway),
 
     cv.Optional(CONF_REUSE_MASTER_SLOTS): cv.boolean,
+    cv.Optional(CONF_IGNORE_HEATER_OVERRIDES): cv.boolean,
     cv.Optional(CONF_OUTSIDE_TEMPERATURE): cv.use_id(sensor.Sensor),
     cv.Optional(CONF_TIME_SOURCE): cv.use_id(time.RealTimeClock),
 }).extend(uart.UART_DEVICE_SCHEMA)
@@ -32,6 +34,9 @@ async def to_code(config):
 
     if CONF_REUSE_MASTER_SLOTS in config:
         cg.add(var.reuse_master_slots(config[CONF_REUSE_MASTER_SLOTS]))
+
+    if CONF_IGNORE_HEATER_OVERRIDES in config:
+        cg.add(var.ignore_heater_overrides(config[CONF_IGNORE_HEATER_OVERRIDES]))
 
     if CONF_OUTSIDE_TEMPERATURE in config:
         sens = await cg.get_variable(config[CONF_OUTSIDE_TEMPERATURE])
