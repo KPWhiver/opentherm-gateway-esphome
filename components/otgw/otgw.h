@@ -18,6 +18,11 @@
 namespace esphome {
 namespace otgw {
 
+// Rollover of 139 years, should be plenty
+inline uint32_t seconds() {
+  return millis_64() / 1000;
+}
+
 template<typename ComponentType>
 class OptionalComponent {
  protected:
@@ -77,10 +82,10 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
       MessageType message_type;
       uint16_t data;
     };
-    using Messages = std::array<optional<Message>, 4>;
+    using Messages = std::array<std::optional<Message>, 4>;
     Messages data;
   };
-  optional<Transaction> _current_transaction;
+  std::optional<Transaction> _current_transaction;
   Transaction::Step _last_transaction_step;
 
   // Heater circuit 1 and 2 are very similar, so we reuse their behaviour
@@ -99,28 +104,42 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
 
   // Information to keep track of which data types are available
   struct DataTypeInfo {
+    struct ReadableInfo {
+      uint16_t interval;
+      std::optional<uint32_t> time_last_received;
+    };
+    std::optional<ReadableInfo> readable_info;
+
     uint8_t consecutive_failures = 0;
     bool interest = false;
     bool supported = true;
-    optional<uint64_t> time_last_received;
   };
   std::unordered_map<uint8_t, DataTypeInfo> _data_types;
-  void set_interest(uint8_t data_type);
+
+  template<typename DataType>
+  void set_interest() {
+    auto &data_type_info = _data_types[DataType::ID];
+    data_type_info.interest = true;
+    if constexpr (DataType::INTERVAL != 0) {
+      data_type_info.readable_info = DataTypeInfo::ReadableInfo{DataType::INTERVAL, std::nullopt};
+    }
+  }
 
   struct DataTypeRequest {
     uint8_t data_type;
-    uint64_t time_of_request;
+    uint32_t time_of_request;
   };
-  optional<DataTypeRequest> _data_type_request;
-  static constexpr uint64_t DATA_TYPE_REQUEST_TIMEOUT = 5 * 60 * 1000;
+  std::optional<DataTypeRequest> _data_type_request;
+  bool _ready_for_requests = false;
+  static constexpr uint32_t DATA_TYPE_REQUEST_TIMEOUT = 5 * 60;
 
   ///// Components /////
   OpenthermGatewayClimate *_room_thermostat{nullptr};
   OpenthermGatewayClimate *_hot_water{nullptr};
   OpenthermGatewayButton *_reset_service_request{nullptr};
   OpenthermGatewayButton *_hot_water_push{nullptr};
-  optional<HeatingCircuit> _heating_circuit_1;
-  optional<HeatingCircuit> _heating_circuit_2;
+  std::optional<HeatingCircuit> _heating_circuit_1;
+  std::optional<HeatingCircuit> _heating_circuit_2;
 
   bool _reuse_master_slots;
   sensor::Sensor *_outside_temperature_override{nullptr};
@@ -131,7 +150,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
  public:
   template<typename SensorType, typename DataType>
   void set_sensor(OptionalOTComponent<SensorType, DataType> &var, SensorType *sens) {
-    set_interest(DataType::ID);
+    set_interest<DataType>();
     var.set(sens);
   }
 
@@ -140,83 +159,83 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
     var.set(sens);
   }
 
-  OptionalOTComponent<text_sensor::TextSensor, SlaveOpenThermVersion> slave_opentherm_version;
-  OptionalOTComponent<text_sensor::TextSensor, MasterOpenThermVersion> master_opentherm_version;
+  OptionalOTComponent<text_sensor::TextSensor, data_types::SlaveOpenThermVersion> slave_opentherm_version;
+  OptionalOTComponent<text_sensor::TextSensor, data_types::MasterOpenThermVersion> master_opentherm_version;
   OptionalComponent<text_sensor::TextSensor> opentherm_gateway_version;
   OptionalComponent<text_sensor::TextSensor> opentherm_gateway_build_date;
   OptionalComponent<text_sensor::TextSensor> last_reset_cause;
 
   // Master state
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> master_central_heating_1;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> master_central_heating_2;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> master_water_heating;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> master_cooling;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> master_water_heating_blocking;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> master_summer_mode;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> master_outside_temperature_compensation;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> master_central_heating_1;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> master_central_heating_2;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> master_water_heating;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> master_cooling;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> master_water_heating_blocking;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> master_summer_mode;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> master_outside_temperature_compensation;
 
   // Slave state
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> slave_central_heating_1;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> slave_central_heating_2;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> slave_fault;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> slave_water_heating;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> slave_flame;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> slave_cooling;
-  OptionalOTComponent<binary_sensor::BinarySensor, Status> slave_diagnostic_event;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> slave_central_heating_1;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> slave_central_heating_2;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> slave_fault;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> slave_water_heating;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> slave_flame;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> slave_cooling;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::Status> slave_diagnostic_event;
 
   // Faults
-  OptionalOTComponent<binary_sensor::BinarySensor, FaultFlags> service_required;
-  OptionalOTComponent<binary_sensor::BinarySensor, FaultFlags> lockout_reset;
-  OptionalOTComponent<binary_sensor::BinarySensor, FaultFlags> low_water_pressure;
-  OptionalOTComponent<binary_sensor::BinarySensor, FaultFlags> gas_flame_fault;
-  OptionalOTComponent<binary_sensor::BinarySensor, FaultFlags> air_pressure_fault;
-  OptionalOTComponent<binary_sensor::BinarySensor, FaultFlags> water_overtemperature;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::FaultFlags> service_required;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::FaultFlags> lockout_reset;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::FaultFlags> low_water_pressure;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::FaultFlags> gas_flame_fault;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::FaultFlags> air_pressure_fault;
+  OptionalOTComponent<binary_sensor::BinarySensor, data_types::FaultFlags> water_overtemperature;
 
   // Setpoints
-  OptionalOTComponent<sensor::Sensor, MaxCHWaterSetpoint> max_central_heating_setpoint;
-  OptionalOTComponent<sensor::Sensor, DHWSetpoint> hot_water_setpoint;
-  OptionalOTComponent<sensor::Sensor, RemoteOverrideRoomSetpoint> remote_override_room_setpoint;
-  OptionalOTComponent<sensor::Sensor, RoomSetpoint> room_setpoint_1;
-  OptionalOTComponent<sensor::Sensor, RoomSetpoint2> room_setpoint_2;
-  OptionalOTComponent<sensor::Sensor, ControlSetpoint> central_heating_setpoint_1;
-  OptionalOTComponent<sensor::Sensor, ControlSetpoint2> central_heating_setpoint_2;
+  OptionalOTComponent<sensor::Sensor, data_types::MaxCHWaterSetpoint> max_central_heating_setpoint;
+  OptionalOTComponent<sensor::Sensor, data_types::DHWSetpoint> hot_water_setpoint;
+  OptionalOTComponent<sensor::Sensor, data_types::RemoteOverrideRoomSetpoint> remote_override_room_setpoint_1;
+  OptionalOTComponent<sensor::Sensor, data_types::RoomSetpoint> room_setpoint_1;
+  OptionalOTComponent<sensor::Sensor, data_types::RoomSetpoint2> room_setpoint_2;
+  OptionalOTComponent<sensor::Sensor, data_types::ControlSetpoint> central_heating_setpoint_1;
+  OptionalOTComponent<sensor::Sensor, data_types::ControlSetpoint2> central_heating_setpoint_2;
 
   // Temperatures
-  OptionalOTComponent<sensor::Sensor, RoomTemperature> room_temperature;
-  OptionalOTComponent<sensor::Sensor, DHWTemperature> hot_water_temperature_1;
-  OptionalOTComponent<sensor::Sensor, DHWTemperature2> hot_water_temperature_2;
-  OptionalOTComponent<sensor::Sensor, BoilerFlowWaterTemperature> central_heating_temperature_1;
-  OptionalOTComponent<sensor::Sensor, FlowTemperatureCH2> central_heating_temperature_2;
-  OptionalOTComponent<sensor::Sensor, OutsideTemperature> outside_temperature;
-  OptionalOTComponent<sensor::Sensor, ReturnWaterTemperature> return_water_temperature;
-  OptionalOTComponent<sensor::Sensor, SolarStorageTemperature> solar_storage_temperature;
-  OptionalOTComponent<sensor::Sensor, SolarCollectorTemperature> solar_collector_temperature;
-  OptionalOTComponent<sensor::Sensor, ExhaustTemperature> exhaust_temperature;
+  OptionalOTComponent<sensor::Sensor, data_types::RoomTemperature> room_temperature_1;
+  OptionalOTComponent<sensor::Sensor, data_types::DHWTemperature> hot_water_temperature_1;
+  OptionalOTComponent<sensor::Sensor, data_types::DHWTemperature2> hot_water_temperature_2;
+  OptionalOTComponent<sensor::Sensor, data_types::BoilerFlowWaterTemperature> central_heating_temperature_1;
+  OptionalOTComponent<sensor::Sensor, data_types::FlowTemperatureCH2> central_heating_temperature_2;
+  OptionalOTComponent<sensor::Sensor, data_types::OutsideTemperature> outside_temperature;
+  OptionalOTComponent<sensor::Sensor, data_types::ReturnWaterTemperature> return_water_temperature;
+  OptionalOTComponent<sensor::Sensor, data_types::SolarStorageTemperature> solar_storage_temperature;
+  OptionalOTComponent<sensor::Sensor, data_types::SolarCollectorTemperature> solar_collector_temperature;
+  OptionalOTComponent<sensor::Sensor, data_types::ExhaustTemperature> exhaust_temperature;
 
   // Modulation
-  OptionalOTComponent<sensor::Sensor, MaxRelativeModulationLevel> max_relative_modulation_level;
-  OptionalOTComponent<sensor::Sensor, MaxBoilerCapMinModulationLevel> max_boiler_capacity;
-  OptionalOTComponent<sensor::Sensor, MaxBoilerCapMinModulationLevel> min_modulation_level;
-  OptionalOTComponent<sensor::Sensor, RelativeModulationLevel> relative_modulation_level;
+  OptionalOTComponent<sensor::Sensor, data_types::MaxRelativeModulationLevel> max_relative_modulation_level;
+  OptionalOTComponent<sensor::Sensor, data_types::MaxBoilerCapMinModulationLevel> max_boiler_capacity;
+  OptionalOTComponent<sensor::Sensor, data_types::MaxBoilerCapMinModulationLevel> min_modulation_level;
+  OptionalOTComponent<sensor::Sensor, data_types::RelativeModulationLevel> relative_modulation_level;
 
   // Water
-  OptionalOTComponent<sensor::Sensor, CHWaterPressure> central_heating_water_pressure;
-  OptionalOTComponent<sensor::Sensor, DHWFlowRate> hot_water_flow_rate;
+  OptionalOTComponent<sensor::Sensor, data_types::CHWaterPressure> central_heating_water_pressure;
+  OptionalOTComponent<sensor::Sensor, data_types::DHWFlowRate> hot_water_flow_rate;
 
   // Starts
-  OptionalOTComponent<sensor::Sensor, PowerCycles> power_cycles;
-  OptionalOTComponent<sensor::Sensor, UnsuccesfulBurnerStarts> unsuccesful_burner_starts;
-  OptionalOTComponent<sensor::Sensor, TimesFlameSignalLow> times_flame_signal_low;
-  OptionalOTComponent<sensor::Sensor, SuccessfulBurnerStarts> central_heating_burner_starts;
-  OptionalOTComponent<sensor::Sensor, CHPumpStarts> central_heating_pump_starts;
-  OptionalOTComponent<sensor::Sensor, DHWPumpStarts> hot_water_pump_starts;
-  OptionalOTComponent<sensor::Sensor, DHWBurnerStarts> hot_water_burner_starts;
+  OptionalOTComponent<sensor::Sensor, data_types::PowerCycles> slave_power_cycles;
+  OptionalOTComponent<sensor::Sensor, data_types::UnsuccesfulBurnerStarts> failed_burner_starts;
+  OptionalOTComponent<sensor::Sensor, data_types::TimesFlameSignalLow> flame_signal_low_count;
+  OptionalOTComponent<sensor::Sensor, data_types::SuccessfulBurnerStarts> central_heating_burner_starts;
+  OptionalOTComponent<sensor::Sensor, data_types::CHPumpStarts> central_heating_pump_starts;
+  OptionalOTComponent<sensor::Sensor, data_types::DHWPumpStarts> hot_water_pump_starts;
+  OptionalOTComponent<sensor::Sensor, data_types::DHWBurnerStarts> hot_water_burner_starts;
 
   // Operation hous
-  OptionalOTComponent<sensor::Sensor, BurnerOperationHours> central_heating_burner_operation_time;
-  OptionalOTComponent<sensor::Sensor, CHPumpOperationHours> central_heating_pump_operation_time;
-  OptionalOTComponent<sensor::Sensor, DHWPumpOperationHours> hot_water_pump_operation_time;
-  OptionalOTComponent<sensor::Sensor, DHWBurnerOperationHours> hot_water_burner_operation_time;
+  OptionalOTComponent<sensor::Sensor, data_types::BurnerOperationHours> central_heating_burner_operation_time;
+  OptionalOTComponent<sensor::Sensor, data_types::CHPumpOperationHours> central_heating_pump_operation_time;
+  OptionalOTComponent<sensor::Sensor, data_types::DHWPumpOperationHours> hot_water_pump_operation_time;
+  OptionalOTComponent<sensor::Sensor, data_types::DHWBurnerOperationHours> hot_water_burner_operation_time;
 
   void set_room_thermostat(OpenthermGatewayClimate *clim);
   void set_hot_water(OpenthermGatewayClimate *clim);
@@ -233,10 +252,9 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   static constexpr uint16_t MAX_BUFFER_SIZE = 128;
   std::string _receive_buffer;
 
-  // TODO: 20 is not enough with all the commands added at the start (2 for each data type)
   static constexpr uint16_t MAX_COMMAND_QUEUE_LENGTH = 20;
   std::vector<std::string> _command_queue;
-  optional<std::string> _send_command;
+  std::optional<std::string> _send_command;
   uint16_t _lines_since_command = 0;
 
   void read_available();
@@ -255,8 +273,8 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
 
   climate::ClimateAction calculate_climate_action(bool flame, bool heating);
   bool set_room_setpoint(float temperature);
-  bool set_heater_climate_target_temperature(optional<HeatingCircuit> &heating_circuit, float temperature);
-  bool set_heater_climate_action(optional<HeatingCircuit> &heating_circuit, bool flame, bool heating);
+  bool set_heater_climate_target_temperature(std::optional<HeatingCircuit> &heating_circuit, float temperature);
+  bool set_heater_climate_action(std::optional<HeatingCircuit> &heating_circuit, bool flame, bool heating);
 
  public:
   OpenthermGateway(uart::UARTComponent *parent) : uart::UARTDevice(parent) {
@@ -322,7 +340,7 @@ inline void OpenthermGateway::HeatingCircuit::set_callbacks(OpenthermGateway &ga
 }
 
 inline void OpenthermGateway::HeatingCircuit::refresh(OpenthermGateway &gateway) {
-  uint64_t now = millis();
+  uint64_t now = millis_64();
   if (
     // This means the clock has overrun
     now < _time_of_last_command ||
