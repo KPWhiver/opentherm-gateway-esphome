@@ -238,7 +238,23 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
         _hot_water->set_action(calculate_climate_action(slave_flame, water_heating));
       }
 
-      this->slave_fault.publish_state(slave_bits[0]);
+      bool fault = slave_bits[0];
+      // Some heaters will not send FaultFlags if there is no fault. So we set those here or trigger
+      // new faultflags messages by marking them as "known"
+      if (!fault) {
+        this->service_required.publish_state(false);
+        this->lockout_reset.publish_state(false);
+        this->low_water_pressure.publish_state(false);
+        this->gas_flame_fault.publish_state(false);
+        this->air_pressure_fault.publish_state(false);
+        this->water_overtemperature.publish_state(false);
+      } else {
+        auto &fault_flags = _data_types[FaultFlags::ID];
+        if (fault_flags.interest && !fault_flags.supported) {
+          queue_command("KI", FaultFlags::as_str());
+        }
+      }
+      this->slave_fault.publish_state(fault);
       this->slave_central_heating_1.publish_state(central_heating_1);
       this->slave_water_heating.publish_state(water_heating);
       this->slave_flame.publish_state(slave_flame);
@@ -305,18 +321,11 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
       if (_heating_circuit_1) {
         _heating_circuit_1->_component->set_current_temperature(temperature);
       }
-
-      // Some boilers do not report the hot water temperature. In that case we can take the overall temperature.
-      if (_hot_water && !_hot_water_temperature_reported) {
-        _hot_water->set_current_temperature(temperature);
-      }
       break;
     }
     case DHWTemperature::ID: {
       float temperature = parse_float(data);
       this->hot_water_temperature_1.publish_state(temperature);
-
-      _hot_water_temperature_reported = true;
 
       if (_hot_water != nullptr) {
         _hot_water->set_current_temperature(temperature);
