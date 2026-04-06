@@ -146,8 +146,6 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
   sensor::Sensor *_outside_temperature_override{nullptr};
   time::RealTimeClock *_time_source{nullptr};
 
-  bool _hot_water_temperature_reported{false};
-
  public:
   template<typename SensorType, typename DataType>
   void set_sensor(OptionalOTComponent<SensorType, DataType> &var, SensorType *sens) {
