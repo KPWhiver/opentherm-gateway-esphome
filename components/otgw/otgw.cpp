@@ -298,6 +298,12 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
     case RemoteOverrideRoomSetpoint::ID:
       this->remote_override_room_setpoint_1.publish_state(parse_float(data));
       break;
+    case NumberOfSlaveParameters::ID:
+      this->number_of_slave_parameters.publish_state(high_data);
+      break;
+    case FaultHistoryBufferSize::ID:
+      this->fault_history_buffer_size.publish_state(high_data);
+      break;
     case MaxRelativeModulationLevel::ID:
       this->max_relative_modulation_level.publish_state(parse_float(data));
       break;
@@ -359,6 +365,22 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
     case ExhaustTemperature::ID:
       this->exhaust_temperature.publish_state(parse_int16(data));
       break;
+    case BoilerHeatExchangerTemperature::ID:
+      this->boiler_heat_exchanger_temperature.publish_state(parse_float(data));
+      break;
+    case BoilerFanSpeedSetpointActual::ID:
+      this->boiler_fan_speed_setpoint.publish_state(high_data);
+      this->boiler_fan_speed.publish_state(low_data);
+      break;
+    case FlameCurrent::ID:
+      this->flame_current.publish_state(parse_float(data));
+      break;
+    case RelativeHumidity::ID:
+      this->relative_humidity.publish_state(parse_float(data));
+      break;
+    case RemoteOverrideRoomSetpoint2::ID:
+      this->remote_override_room_setpoint_2.publish_state(parse_float(data));
+      break;
     case DHWSetpointBounds::ID:
       if (_hot_water != nullptr) {
         _hot_water->set_max_temperature(high_data);
@@ -385,6 +407,15 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
       }
       break;
     }
+    case CoolingOperationHours::ID:
+      this->cooling_operation_time.publish_state(data);
+      break;
+    case PowerCycles::ID:
+      this->slave_power_cycles.publish_state(data);
+      break;
+    case UnsuccesfulBurnerStarts::ID:
+      this->failed_burner_starts.publish_state(data);
+      break;
     case SuccessfulBurnerStarts::ID:
       this->central_heating_burner_starts.publish_state(data);
       break;
@@ -442,9 +473,16 @@ bool OpenthermGateway::handle_master_request(uint8_t data_type, uint16_t data) {
       break;
     }
     case RoomTemperatureCH2::ID:
+      this->room_temperature_2.publish_state(parse_float(data));
+      break;
+    case CoolingControl::ID:
+      this->cooling_control.publish_state(parse_float(data));
       break;
     case OutsideTemperature::ID:
       this->outside_temperature.publish_state(parse_float(data));
+      break;
+    case RelativeHumidity::ID:
+      this->relative_humidity.publish_state(parse_float(data));
       break;
     case MasterOpenThermVersion::ID:
       this->master_opentherm_version.publish_state(std::to_string(parse_float(data)));
