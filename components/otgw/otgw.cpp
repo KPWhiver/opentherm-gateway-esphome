@@ -6,6 +6,8 @@
 namespace esphome {
 namespace otgw {
 
+using namespace data_types;
+
 float OpenthermGateway::parse_float(uint16_t data) { return ((data & 0x8000) ? -(0x10000L - data) : data) / 256.0f; }
 
 int16_t OpenthermGateway::parse_int16(uint16_t data) { return *reinterpret_cast<int16_t *>(&data); }
@@ -61,6 +63,11 @@ void OpenthermGateway::setup() {
   queue_command("PR", "A");
   queue_command("PR", "B");
   queue_command("PR", "Q");
+
+  // Trigger slave opentherm version requests. We do this to find out when the initialization of
+  // the gateway is done
+  queue_command("KI", SlaveOpenThermVersion::as_str());
+  queue_command("AA", SlaveOpenThermVersion::as_str());
 }
 
 void OpenthermGateway::read_available() {
@@ -172,12 +179,12 @@ void OpenthermGateway::parse_command_response(std::string const &line) {
   } else if (command_code == "CS") {
     if (_heating_circuit_1) {
       // The CS command needs to be given once per minute
-      _heating_circuit_1->_time_of_last_command = millis();
+      _heating_circuit_1->_time_of_last_command = millis_64();
     }
   } else if (command_code == "C2") {
     if (_heating_circuit_2) {
       // The C2 command needs to be given once per minute
-      _heating_circuit_2->_time_of_last_command = millis();
+      _heating_circuit_2->_time_of_last_command = millis_64();
     }
   }
   _send_command.reset();
@@ -253,16 +260,6 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
       if (_room_thermostat != nullptr) {
         _room_thermostat->set_cooling_supported(slave_configuration[2]);
       }
-
-      if (_hot_water != nullptr) {
-        _hot_water->set_internal(!slave_configuration[0]);
-      }
-
-      bool modulation_supported = !slave_configuration[1];
-      bool hot_water_tank = slave_configuration[3];
-      if (_heating_circuit_2) {
-        _heating_circuit_2->_component->set_internal(!slave_configuration[5]);
-      }
     }
     case FaultFlags::ID: {
       std::bitset<8> bits(high_data);
@@ -282,10 +279,9 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
       }
       break;
     }
-    case RemoteOverrideRoomSetpoint::ID: {
-      this->remote_override_room_setpoint.publish_state(parse_float(data));
+    case RemoteOverrideRoomSetpoint::ID:
+      this->remote_override_room_setpoint_1.publish_state(parse_float(data));
       break;
-    }
     case MaxRelativeModulationLevel::ID:
       this->max_relative_modulation_level.publish_state(parse_float(data));
       break;
@@ -422,52 +418,27 @@ bool OpenthermGateway::handle_master_request(uint8_t data_type, uint16_t data) {
       if (_room_thermostat != nullptr) {
         _room_thermostat->set_target_temperature(temperature);
       }
-
-      if (_reuse_master_slots) {
-        queue_command("UI", RoomSetpoint::as_str());
-      }
       break;
     }
     case RoomSetpoint2::ID:
       this->room_setpoint_2.publish_state(parse_float(data));
-
-      if (_reuse_master_slots) {
-        queue_command("UI", RoomSetpoint2::as_str());
-      }
       break;
     case RoomTemperature::ID: {
       float temperature = parse_float(data);
-      this->room_temperature.publish_state(temperature);
+      this->room_temperature_1.publish_state(temperature);
 
       if (_room_thermostat != nullptr) {
         _room_thermostat->set_current_temperature(temperature);
       }
-
-      if (_reuse_master_slots) {
-        queue_command("UI", RoomTemperature::as_str());
-      }
       break;
     }
     case RoomTemperatureCH2::ID:
-      if (_reuse_master_slots) {
-        queue_command("UI", RoomTemperatureCH2::as_str());
-      }
       break;
     case OutsideTemperature::ID:
       this->outside_temperature.publish_state(parse_float(data));
       break;
     case MasterOpenThermVersion::ID:
       this->master_opentherm_version.publish_state(std::to_string(parse_float(data)));
-
-      if (_reuse_master_slots) {
-        queue_command("UI", MasterOpenThermVersion::as_str());
-      }
-      break;
-    case MasterProductVersion::ID:
-      if (_reuse_master_slots) {
-        queue_command("UI", MasterProductVersion::as_str());
-      }
-
       break;
     default:
       return false;
@@ -493,7 +464,7 @@ bool OpenthermGateway::handle_gateway_response(uint8_t data_type, uint16_t data)
 }
 
 void OpenthermGateway::handle_transaction(OpenthermGateway::Transaction const &transaction) {
-  ESP_LOGI("otgw", "Received %d,%d transaction:", transaction.master_data_type, transaction.slave_data_type);
+  ESP_LOGD("otgw", "Received %d,%d transaction:", transaction.master_data_type, transaction.slave_data_type);
   for (uint8_t step = 0; step != 4; ++step) {
     auto message = transaction.data[step];
     if (message) {
@@ -501,8 +472,38 @@ void OpenthermGateway::handle_transaction(OpenthermGateway::Transaction const &t
     }
   }
 
+  bool reusable_master_slot = false;
+  if (
+    _reuse_master_slots && transaction.data[Transaction::TH_REQUEST] &&
+    transaction.data[Transaction::TH_REQUEST]->message_type == Transaction::WRITE_DATA && (
+      transaction.master_data_type == RoomSetpoint::ID ||
+      transaction.master_data_type == RoomSetpoint2::ID ||
+      transaction.master_data_type == RoomTemperature::ID ||
+      transaction.master_data_type == RoomTemperatureCH2::ID ||
+      transaction.master_data_type == MasterOpenThermVersion::ID ||
+      transaction.master_data_type == MasterProductVersion::ID
+    )
+  ) {
+    reusable_master_slot = true;
+  }
+
   if (transaction.master_data_type != transaction.slave_data_type) {
-    // In this case we are really dealing with two transactions
+    // In this case we are really dealing with two transactions so we split them up
+    if (transaction.slave_data_type == SlaveOpenThermVersion::ID) {
+      _ready_for_requests = true;
+    }
+
+    // We don't support the use of alternatives as it disrupts the algorithm determining when
+    // to send priority messages
+    queue_command("DA", std::to_string(transaction.slave_data_type));
+
+    if (!reusable_master_slot) {
+      auto const &data_type_info = _data_types[transaction.master_data_type];
+      if (data_type_info.interest && data_type_info.supported) {
+        // We are interested but apparently it is marked as unknown
+        queue_command("KI", std::to_string(transaction.master_data_type));
+      }
+    }
 
     auto data = transaction.data;
     data[Transaction::GA_REQUEST].reset();
@@ -514,12 +515,18 @@ void OpenthermGateway::handle_transaction(OpenthermGateway::Transaction const &t
     data[Transaction::GA_RESPONSE].reset();
     handle_transaction_messages(transaction.slave_data_type, data);
   } else {
-    handle_transaction_messages(transaction.master_data_type, transaction.data);
+    uint8_t data_type = transaction.master_data_type;
+
+    if (reusable_master_slot) {
+      queue_command("UI", std::to_string(data_type));
+    }
+
+    handle_transaction_messages(data_type, transaction.data);
   }
 }
 
 void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermGateway::Transaction::Messages data) {
-  optional<bool> read_transaction;
+  std::optional<bool> read_transaction;
   bool supported = true;
   for (uint8_t step = 0; step != 4; ++step) {
     auto &message = data[step];
@@ -534,7 +541,7 @@ void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermG
       return;
     }
 
-    optional<bool> read_message;
+    std::optional<bool> read_message;
     switch (message->message_type) {
       case Transaction::READ_DATA:
         read_message = true;
@@ -559,7 +566,6 @@ void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermG
       case Transaction::DATA_INVALID:
         ESP_LOGW("otgw", "MSG %d: data invalid", data_type);
         supported = false;
-        message.reset();
         break;
       case Transaction::UNKNOWN_DATAID:
         if (step != Transaction::GA_RESPONSE) {
@@ -567,7 +573,6 @@ void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermG
           ESP_LOGW("otgw", "MSG %d: unknown dataid", data_type);
           supported = false;
         }
-        message.reset();
         break;
       default:
         ESP_LOGE("otgw", "Received unknown message type %d", message->message_type);
@@ -596,28 +601,51 @@ void OpenthermGateway::handle_transaction_messages(uint8_t data_type, OpenthermG
   DataTypeInfo& info = _data_types[data_type];
   if (!supported) {
     info.consecutive_failures = min(info.consecutive_failures + 1, 10);
-    info.supported = false;
   } else {
     info.consecutive_failures = 0;
+    info.supported = true;
   }
 
-  info.time_last_received = millis();
+  if (info.readable_info) {
+    info.readable_info->time_last_received = seconds();
+  }
   if (_data_type_request && _data_type_request->data_type == data_type) {
     _data_type_request.reset();
   }
 
-  // Data types 1, 8, and 14 are commands, the heater will send the value back to the thermostat,
+  // Some data types are commands, the heater will send the value back to the thermostat,
   // so we can get the relevant data from the heater response
-  bool treat_as_read_transaction = *read_transaction || data_type == Status::ID ||
-    data_type == ControlSetpoint::ID || data_type == ControlSetpoint2::ID;
+  bool treat_as_read_transaction = (
+    *read_transaction ||
+    data_type == ControlSetpoint::ID ||
+    data_type == ControlSetpoint2::ID ||
+    data_type == MaxRelativeModulationLevel::ID ||
+    data_type == DHWSetpoint::ID ||
+    data_type == MaxCHWaterSetpoint::ID
+  );
 
-  if ((*read_transaction && !info.interest) || info.consecutive_failures >= 3) {
-    // Tell the gateway that we are not interested in this data type
-    std::string data_type_as_str = std::to_string(static_cast<uint16_t>(data_type));
-    queue_command("UI", data_type_as_str);
-
-    if (*read_transaction) {
+  if (data[Transaction::CH_RESPONSE]) {
+    if ((
+      !info.interest &&
+      // Without these the heating might not function
+      data_type != Status::ID &&
+      data_type != SlaveConfiguration::ID &&
+      data_type != ControlSetpoint::ID &&
+      data_type != ControlSetpoint2::ID &&
+      data_type != BoilerFlowWaterTemperature::ID &&
+      data_type != FlowTemperatureCH2::ID &&
+      data_type != MaxRelativeModulationLevel::ID &&
+      data_type != RelativeModulationLevel::ID &&
+      data_type != RemoteRequest::ID &&
+      data_type != CoolingControl::ID &&
+      (data_type != RemoteOverrideRoomSetpoint::ID || _ignore_heater_overrides) &&
+      (data_type != RemoteOverrideRoomSetpoint2::ID || _ignore_heater_overrides)
+    ) || info.consecutive_failures >= 3) {
+      // Tell the gateway that we are not interested in this data type
+      std::string data_type_as_str = std::to_string(data_type);
+      queue_command("UI", data_type_as_str);
       queue_command("DA", data_type_as_str);
+      info.supported = false;
     }
   }
 
@@ -737,7 +765,7 @@ void OpenthermGateway::loop() {
     write_str(_send_command->c_str());
     flush();
   } else if (!_send_command) { // Means queue is empty
-    uint64_t current_time = millis();
+    uint32_t current_time = seconds();
 
     // We do this here to avoid spamming the queue
     if (_heating_circuit_1)
@@ -753,52 +781,35 @@ void OpenthermGateway::loop() {
         ESP_LOGD("otgw", "Did not receive data after PM=%d command", _data_type_request->data_type);
         _data_type_request.reset();
       }
-    } else {
-      uint64_t longest_time_since_request = 0;
-      optional<uint8_t> most_outdated_data_type;
-
+    } else if (_ready_for_requests) {
+      std::optional<DataTypeRequest> most_outdated_data_type;
       for (auto &item : _data_types) {
-        if (!item.second.interest || !item.second.supported) {
+        if (!item.second.interest || !item.second.supported || !item.second.readable_info) {
           continue;
         }
 
-        if (!item.second.time_last_received) {
-          most_outdated_data_type = item.first;
+        auto time_last_received = item.second.readable_info->time_last_received;
+        if (!time_last_received) {
+          most_outdated_data_type = DataTypeRequest{item.first, current_time};
           break;
         }
-
-        uint64_t time_since_request;
-        // Check for clock overflow
-        if (item.second.time_last_received > current_time) {
-          time_since_request = 0xFFFF'FFFF'FFFF'FFFF - *item.second.time_last_received + current_time;
-        } else {
-          time_since_request = current_time - *item.second.time_last_received;
-        }
-
-        if (time_since_request > longest_time_since_request) {
-          longest_time_since_request = time_since_request;
-          most_outdated_data_type = item.first;
+        
+        auto time_of_next_request = *time_last_received + item.second.readable_info->interval * 60;
+        if (!most_outdated_data_type || time_of_next_request < most_outdated_data_type->time_of_request) {
+          most_outdated_data_type = DataTypeRequest{item.first, time_of_next_request};
         }
       }
 
       if (most_outdated_data_type) {
-        _data_type_request = DataTypeRequest{*most_outdated_data_type, current_time};
-        queue_command("PM", std::to_string(static_cast<uint16_t>(*most_outdated_data_type)));
+        uint8_t data_type = most_outdated_data_type->data_type;
+
+        _data_type_request = DataTypeRequest{data_type, current_time};
+        queue_command("PM", std::to_string(data_type));
       }
     }
   }
 
   read_available();
-}
-
-void OpenthermGateway::set_interest(uint8_t data_type) {
-  std::string data_type_as_str = std::to_string(static_cast<uint16_t>(data_type));
-  queue_command("KI", data_type_as_str);
-
-  // This is to prevent adding data types multiple times
-  queue_command("DA", data_type_as_str);
-
-  _data_types[data_type].interest = true;
 }
 
 void OpenthermGateway::set_room_thermostat(OpenthermGatewayClimate *clim) {
@@ -825,11 +836,10 @@ void OpenthermGateway::set_room_thermostat(OpenthermGatewayClimate *clim) {
 
   _room_thermostat->set_callbacks(callback, callback);
 
-  set_interest(Status::ID);
-  set_interest(SlaveConfiguration::ID);
-  set_interest(RoomSetpoint::ID);
-  set_interest(RoomTemperature::ID);
-  set_interest(RemoteOverrideRoomSetpoint::ID);
+  set_interest<Status>();
+  set_interest<SlaveConfiguration>();
+  set_interest<RoomSetpoint>();
+  set_interest<RoomTemperature>();
 }
 
 void OpenthermGateway::set_hot_water(OpenthermGatewayClimate *clim) {
@@ -840,6 +850,7 @@ void OpenthermGateway::set_hot_water(OpenthermGatewayClimate *clim) {
     sprintf(parameter, "%2.2f", _hot_water->target_temperature);
 
     queue_command("SW", parameter);
+    _data_type_request = DataTypeRequest{DHWSetpoint::ID, seconds()};
   }, [this]() {
     // mode callback
     switch (_hot_water->mode) {
@@ -861,35 +872,36 @@ void OpenthermGateway::set_hot_water(OpenthermGatewayClimate *clim) {
     }
   });
 
-  set_interest(Status::ID);
-  set_interest(SlaveConfiguration::ID);
-  set_interest(BoilerFlowWaterTemperature::ID);
-  set_interest(DHWTemperature::ID);
-  set_interest(DHWSetpointBounds::ID);
-  set_interest(DHWSetpoint::ID);
+  set_interest<Status>();
+  set_interest<SlaveConfiguration>();
+  set_interest<BoilerFlowWaterTemperature>();
+  set_interest<DHWTemperature>();
+  set_interest<DHWSetpointBounds>();
+  set_interest<DHWSetpoint>();
+  set_interest<RemoteParameters>(); // Without this, OTGW won't send setpoints
 }
 
 void OpenthermGateway::set_heating_circuit_1(OpenthermGatewayClimate *clim) {
   _heating_circuit_1 = HeatingCircuit{0, clim, "CS", "CH"};
   _heating_circuit_1->set_callbacks(*this);
 
-  set_interest(Status::ID);
-  set_interest(ControlSetpoint::ID);
-  set_interest(BoilerFlowWaterTemperature::ID);
-  set_interest(MaxCHWaterSetpoint::ID);
-  set_interest(CHSetpointBounds::ID);
+  set_interest<Status>();
+  set_interest<ControlSetpoint>();
+  set_interest<BoilerFlowWaterTemperature>();
+  set_interest<MaxCHWaterSetpoint>();
+  set_interest<CHSetpointBounds>();
 }
 
 void OpenthermGateway::set_heating_circuit_2(OpenthermGatewayClimate *clim) {
   _heating_circuit_2 = HeatingCircuit{0, clim, "C2", "H2"};
   _heating_circuit_2->set_callbacks(*this);
 
-  set_interest(Status::ID);
-  set_interest(SlaveConfiguration::ID);
-  set_interest(ControlSetpoint2::ID);
-  set_interest(FlowTemperatureCH2::ID);
-  set_interest(MaxCHWaterSetpoint::ID);
-  set_interest(CHSetpointBounds::ID);
+  set_interest<Status>();
+  set_interest<SlaveConfiguration>();
+  set_interest<ControlSetpoint2>();
+  set_interest<FlowTemperatureCH2>();
+  set_interest<MaxCHWaterSetpoint>();
+  set_interest<CHSetpointBounds>();
 }
 
 void OpenthermGateway::reuse_master_slots(bool reuse_slots) {
@@ -922,6 +934,7 @@ void OpenthermGateway::set_reset_service_request_button(OpenthermGatewayButton *
   _reset_service_request = butt;
   _reset_service_request->set_callback([this]() {
     queue_command("RR", "10");
+    _data_type_request = DataTypeRequest{RemoteRequest::ID, seconds()};
   });
 }
 
@@ -944,7 +957,7 @@ climate::ClimateAction OpenthermGateway::calculate_climate_action(bool flame, bo
   return action;
 }
 
-bool OpenthermGateway::set_heater_climate_action(optional<HeatingCircuit> &heating_circuit, bool flame, bool heating) {
+bool OpenthermGateway::set_heater_climate_action(std::optional<HeatingCircuit> &heating_circuit, bool flame, bool heating) {
   if (heating_circuit) {
     auto action = calculate_climate_action(flame, heating);
     heating_circuit->_component->set_action(action);

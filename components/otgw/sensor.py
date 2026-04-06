@@ -42,7 +42,7 @@ CONFIG_SCHEMA = cv.Schema({
         accuracy_decimals=2,
         device_class=DEVICE_CLASS_TEMPERATURE,
     ),
-    cv.Optional("remote_override_room_setpoint"): sensor.sensor_schema(
+    cv.Optional("remote_override_room_setpoint_1"): sensor.sensor_schema(
         unit_of_measurement=UNIT_CELSIUS,
         accuracy_decimals=2,
         device_class=DEVICE_CLASS_TEMPERATURE,
@@ -83,7 +83,7 @@ CONFIG_SCHEMA = cv.Schema({
         device_class=DEVICE_CLASS_TEMPERATURE,
         state_class=STATE_CLASS_MEASUREMENT,
     ),
-    cv.Optional("room_temperature"): sensor.sensor_schema(
+    cv.Optional("room_temperature_1"): sensor.sensor_schema(
         unit_of_measurement=UNIT_CELSIUS,
         accuracy_decimals=2,
         device_class=DEVICE_CLASS_TEMPERATURE,
