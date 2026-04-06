@@ -5,7 +5,7 @@ Tested with gateway v2.10 and v2.11, but it should also work with older versions
 
 It won't work with a DIYLESS Master OpenTherm Shield!
 
-Not all functionality offered by the gateway is currently supported, due to a lack of testing hardware. If you need specific functionality and have hardware that supports it, feel free to create a new issue.
+Due to a lack of testing hardware, not all functionality offered by the gateway is currently supported. If you need specific functionality and have hardware that supports it, feel free to create a new issue.
 
 ## Use cases
 There are several ways to use this component. A full example of all the options can be found in `example_otgw.yaml`.
@@ -88,3 +88,20 @@ climate:
     - name: Home
       default_target_temperature_low: 20 °C
 ```
+
+## Requesting extra information
+The component will try to request information from the heater that the thermostat does not request. It does this by marking all the sensors in the yaml as interesting and querying them manually.
+
+Manually requesting is done by altering messages that the heater does not support. There are two settings that can be added that will increase the number of message types that can be used for this, use with care:
+```yaml
+otgw:
+  # This will make the heater ignore room temperature and setpoint. The component can then instead request other
+  # information from the heater. Disable if your heater requires this information.
+  reuse_master_slots: true
+  # This will stop the heater from sending setpoint overrides to the thermostat. The component can then instead
+  # request other information from the heater. Disable if you rely on your heater requesting this
+  # information.
+  ignore_heater_overrides: true
+```
+
+Message types that are requested by the thermostat but not mentioned in your YAML file will also be altered. As such, it is best to only put the sensors/components in the YAML that you actually need.
