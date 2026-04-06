@@ -18,6 +18,13 @@ external_components:
 
 otgw:
   time_source: hass_time
+  # This will make the heater ignore room temperature and setpoint. The component can then instead request other
+  # information from the heater. Disable if your heater requires this information.
+  reuse_master_slots: true
+  # This will stop the heater from sending setpoint overrides to the thermostat. The component can then instead
+  # request other information from the heater. Disable if you rely on your heater requesting this
+  # information.
+  ignore_heater_overrides: true
 
 uart:
   id: uart_bus
@@ -49,6 +56,8 @@ text_sensor:
     name: "Opentherm gateway build date"
   last_reset_cause:
     name: "Last reset cause"
+  slave_oem_diagnostic_code:
+    name: "OEM diagnostic code"
 
 binary_sensor:
 - platform: otgw
@@ -115,8 +124,12 @@ sensor:
     name: "Room Setpoint 1"
   room_setpoint_2:
     name: "Room Setpoint 2"
-  remote_override_room_setpoint:
-    name: "Remote Override Room Setpoint"
+  remote_override_room_setpoint_1:
+    name: "Remote Override Room Setpoint 1"
+  remote_override_room_setpoint_2:
+    name: "Remote Override Room Setpoint 2"
+  cooling_control:
+    name: "Cooling control"
 
   # Temperatures
   central_heating_temperature_1:
@@ -127,8 +140,10 @@ sensor:
     name: "Hot Water Temperature 1"
   hot_water_temperature_2:
     name: "Hot Water Temperature 2"
-  room_temperature:
-    name: "Room Temperature"
+  room_temperature_1:
+    name: "Room Temperature 1"
+  room_temperature_2:
+    name: "Room Temperature 2"
   outside_temperature:
     name: "Outside Temperature"
   return_water_temperature:
@@ -139,6 +154,8 @@ sensor:
     name: "Solar Collector Temperature"
   exhaust_temperature:
     name: "Exhaust Temperature"
+  boiler_heat_exchanger_temperature:
+    name: "Boiler heat exchanger temperature"
 
   # Modulation
   relative_modulation_level:
@@ -157,6 +174,12 @@ sensor:
     name: "Hot Water Flow Rate"
 
   # Starts
+  slave_power_cycles:
+    name: "Slave power cycles"
+  failed_burner_starts:
+    name: "Failed burner starts"
+  flame_signal_low_count:
+    name: "Flame signal low count"
   central_heating_burner_starts:
     name: "Central Heating Burner Starts"
   central_heating_pump_starts:
@@ -167,6 +190,8 @@ sensor:
     name: "Hot Water Burner Starts"
 
   # Operation hours
+  cooling_operation_time:
+    name: "Cooling operation time"
   central_heating_burner_operation_time:
     name: "Central Heating Burner Operation Time"
   central_heating_pump_operation_time:
@@ -175,6 +200,20 @@ sensor:
     name: "Hot Water Pump Operation Time"
   hot_water_burner_operation_time:
     name: "Hot Water Burner Operation Time"
+
+  # Other
+  number_of_slave_parameters:
+    name: "Number of slave parameters"
+  fault_history_buffer_size:
+    name: "Fault history buffer size"
+  boiler_fan_speed_setpoint:
+    name: "Boiler fan speed setpoint"
+  boiler_fan_speed:
+    name: "Boiler fan speed"
+  flame_current:
+    name: "Flame current"
+  relative_humidity:
+    name: "Relative humidity"
 
 climate:
   - platform: otgw
