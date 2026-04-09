@@ -3,24 +3,18 @@
 namespace esphome {
 namespace otgw {
 
-OpenthermGatewayClimate::OpenthermGatewayClimate(float max_temperature, bool off_supported)
-    : _off_supported(off_supported) {
+OpenthermGatewayClimate::OpenthermGatewayClimate() {
   _traits.add_feature_flags(
     climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE |
     climate::CLIMATE_SUPPORTS_ACTION
   );
   _traits.set_supported_modes({climate::CLIMATE_MODE_AUTO, climate::CLIMATE_MODE_HEAT});
-  if (off_supported) {
-    _traits.add_supported_mode(climate::CLIMATE_MODE_OFF);
-  }
   _traits.set_visual_min_temperature(1);
-  _traits.set_visual_max_temperature(max_temperature);
+  _traits.set_visual_max_temperature(30);
   _traits.set_visual_temperature_step(0.01);
 
-  if (!off_supported) {
-    // TODO: get this value from memory
-    this->set_mode(climate::CLIMATE_MODE_AUTO);
-  }
+  // TODO: get this value from memory
+  this->set_mode(climate::CLIMATE_MODE_AUTO);
 }
 
 void OpenthermGatewayClimate::control(const climate::ClimateCall &call) {
@@ -30,7 +24,7 @@ void OpenthermGatewayClimate::control(const climate::ClimateCall &call) {
 
   if (call.get_mode().has_value()) {
     auto new_mode = *call.get_mode();
-    if (new_mode != climate::CLIMATE_MODE_OFF || _off_supported) {
+    if (new_mode != climate::CLIMATE_MODE_OFF) {
       this->mode = new_mode;
       _mode_callback();
     }

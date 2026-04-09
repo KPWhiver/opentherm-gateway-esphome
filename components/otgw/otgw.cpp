@@ -1,6 +1,5 @@
 #include "otgw.h"
 
-#include "climate.h"
 #include "esphome/components/esp8266/gpio.h"
 
 namespace esphome {
@@ -208,9 +207,9 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
       bool master_water_heating = master_bits[1];
       bool master_block_hot_water = master_bits[6];
       if (_hot_water != nullptr) {
-        climate::ClimateMode mode = climate::CLIMATE_MODE_OFF;
+        water_heater::WaterHeaterMode mode = water_heater::WATER_HEATER_MODE_OFF;
         if (!master_block_hot_water) {
-          mode = master_water_heating ? climate::CLIMATE_MODE_HEAT : climate::CLIMATE_MODE_AUTO;
+          mode = master_water_heating ? water_heater::WATER_HEATER_MODE_PERFORMANCE : water_heater::WATER_HEATER_MODE_ECO;
         }
         _hot_water->set_mode(mode);
       }
@@ -225,18 +224,6 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
 
       // Slave state
       std::bitset<8> slave_bits(low_data);
-      bool slave_flame = slave_bits[3];
-
-      bool central_heating_1 = slave_bits[1];
-      set_heater_climate_action(_heating_circuit_1, slave_flame, central_heating_1);
-
-      bool central_heating_2 = slave_bits[5];
-      set_heater_climate_action(_heating_circuit_2, slave_flame, central_heating_2);
-
-      bool water_heating = slave_bits[2];
-      if (_hot_water != nullptr) {
-        _hot_water->set_action(calculate_climate_action(slave_flame, water_heating));
-      }
 
       bool fault = slave_bits[0];
       // Some heaters will not send FaultFlags if there is no fault. So we set those here or trigger
@@ -255,11 +242,11 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
         }
       }
       this->slave_fault.publish_state(fault);
-      this->slave_central_heating_1.publish_state(central_heating_1);
-      this->slave_water_heating.publish_state(water_heating);
-      this->slave_flame.publish_state(slave_flame);
+      this->slave_central_heating_1.publish_state(slave_bits[1]);
+      this->slave_water_heating.publish_state(slave_bits[2]);
+      this->slave_flame.publish_state(slave_bits[3]);
       this->slave_cooling.publish_state(slave_bits[4]);
-      this->slave_central_heating_2.publish_state(central_heating_2);
+      this->slave_central_heating_2.publish_state(slave_bits[5]);
       this->slave_diagnostic_event.publish_state(slave_bits[6]);
       break;
     }
@@ -845,7 +832,7 @@ void OpenthermGateway::loop() {
           most_outdated_data_type = DataTypeRequest{item.first, current_time};
           break;
         }
-        
+
         auto time_of_next_request = *time_last_received + item.second.readable_info->interval * 60;
         if (!most_outdated_data_type || time_of_next_request < most_outdated_data_type->time_of_request) {
           most_outdated_data_type = DataTypeRequest{item.first, time_of_next_request};
@@ -894,32 +881,32 @@ void OpenthermGateway::set_room_thermostat(OpenthermGatewayClimate *clim) {
   set_interest<RoomTemperature>();
 }
 
-void OpenthermGateway::set_hot_water(OpenthermGatewayClimate *clim) {
-  _hot_water = clim;
+void OpenthermGateway::set_hot_water(OpenthermGatewayWaterHeater *water_heater) {
+  _hot_water = water_heater;
   _hot_water->set_callbacks([this]() {
     // target callback
     char parameter[6];
-    sprintf(parameter, "%2.2f", _hot_water->target_temperature);
+    sprintf(parameter, "%2.2f", _hot_water->get_target_temperature());
 
     queue_command("SW", parameter);
     _data_type_request = DataTypeRequest{DHWSetpoint::ID, seconds()};
   }, [this]() {
     // mode callback
-    switch (_hot_water->mode) {
-      case climate::ClimateMode::CLIMATE_MODE_HEAT:
+    switch (_hot_water->get_mode()) {
+      case water_heater::WATER_HEATER_MODE_PERFORMANCE:
         queue_command("BW", "0");
         queue_command("HW", "1");
         break;
-      case climate::ClimateMode::CLIMATE_MODE_AUTO:
+      case water_heater::WATER_HEATER_MODE_ECO:
         queue_command("BW", "0");
         queue_command("HW", "0");
         break;
-      case climate::ClimateMode::CLIMATE_MODE_OFF:
+      case water_heater::WATER_HEATER_MODE_OFF:
         queue_command("HW", "0");
         queue_command("BW", "1");
         break;
       default:
-        ESP_LOGE("otgw", "Invalid climate mode for hot water");
+        ESP_LOGE("otgw", "Invalid water heater mode for hot water");
         break;
     }
   });
@@ -933,8 +920,8 @@ void OpenthermGateway::set_hot_water(OpenthermGatewayClimate *clim) {
   set_interest<RemoteParameters>(); // Without this, OTGW won't send setpoints
 }
 
-void OpenthermGateway::set_heating_circuit_1(OpenthermGatewayClimate *clim) {
-  _heating_circuit_1 = HeatingCircuit{0, clim, "CS", "CH"};
+void OpenthermGateway::set_heating_circuit_1(OpenthermGatewayWaterHeater *water_heater) {
+  _heating_circuit_1 = HeatingCircuit{0, water_heater, "CS", "CH"};
   _heating_circuit_1->set_callbacks(*this);
 
   set_interest<Status>();
@@ -944,8 +931,8 @@ void OpenthermGateway::set_heating_circuit_1(OpenthermGatewayClimate *clim) {
   set_interest<CHSetpointBounds>();
 }
 
-void OpenthermGateway::set_heating_circuit_2(OpenthermGatewayClimate *clim) {
-  _heating_circuit_2 = HeatingCircuit{0, clim, "C2", "H2"};
+void OpenthermGateway::set_heating_circuit_2(OpenthermGatewayWaterHeater *water_heater) {
+  _heating_circuit_2 = HeatingCircuit{0, water_heater, "C2", "H2"};
   _heating_circuit_2->set_callbacks(*this);
 
   set_interest<Status>();
@@ -999,27 +986,6 @@ void OpenthermGateway::set_hot_water_push_button(OpenthermGatewayButton *butt) {
   _hot_water_push->set_callback([this]() {
     queue_command("HW", "P");
   });
-}
-
-climate::ClimateAction OpenthermGateway::calculate_climate_action(bool flame, bool heating) {
-  climate::ClimateAction action;
-  if (!heating) {
-    action = climate::CLIMATE_ACTION_OFF;
-  } else if (flame) {
-    action = climate::CLIMATE_ACTION_HEATING;
-  } else {
-    action = climate::CLIMATE_ACTION_IDLE;
-  }
-  return action;
-}
-
-bool OpenthermGateway::set_heater_climate_action(std::optional<HeatingCircuit> &heating_circuit, bool flame, bool heating) {
-  if (heating_circuit) {
-    auto action = calculate_climate_action(flame, heating);
-    heating_circuit->_component->set_action(action);
-    return true;
-  }
-  return false;
 }
 
 }  // namespace otgw

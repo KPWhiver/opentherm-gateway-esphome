@@ -58,12 +58,14 @@ sensor:
   entity_id: sensor.room2_temperature
   id: room2_temperature
 
-climate:
+water_heater:
 - platform: otgw
   heating_circuit_1:
     id: heater_circuit
     name: "Heating circuit"
     internal: true
+
+climate:
 - platform: thermostat
   name: "Room2"
   sensor: room2_temperature
@@ -73,15 +75,16 @@ climate:
   heat_action:
   - lambda: |-
       auto call = id(heater_circuit).make_call();
+      // Setting the mode to HEAT or the target temperature to any value other than
+      // 0 takes control away from the thermostat
       call.set_target_temperature(55);
-      // Setting the mode to HEAT takes control away from the thermostat
-      call.set_mode(climate::CLIMATE_MODE_HEAT);
+      call.set_mode(water_heater::WATER_HEATER_MODE_HEAT);
       call.perform();
   idle_action:
   - lambda: |-
       auto call = id(heater_circuit).make_call();
-      // Setting the mode to AUTO gives control back from the thermostat
-      call.set_mode(climate::CLIMATE_MODE_AUTO);
+      // Setting the target temperature to 0 gives control back to the thermostat
+      call.set_target_temperature(0);
       call.perform();
   default_preset: Home
   preset:
