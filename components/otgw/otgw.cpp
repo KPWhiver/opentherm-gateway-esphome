@@ -552,6 +552,11 @@ void OpenthermGateway::handle_transaction(OpenthermGateway::Transaction const &t
       }
     }
 
+    // This was an overriden message. If it was because of a "PM" we can mark the request as done.
+    // If something else caused it it is still a good idea to mark it as done, as we might otherwise
+    // cause the system to wait on a PM response that never comes.
+    _data_type_request.reset();
+
     auto data = transaction.data;
     data[Transaction::GA_REQUEST].reset();
     data[Transaction::CH_RESPONSE].reset();
