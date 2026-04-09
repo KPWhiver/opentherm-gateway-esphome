@@ -216,12 +216,15 @@ sensor:
     name: "Relative humidity"
 
 climate:
-  - platform: otgw
-    room_thermostat:
-      name: "Room"
-    heating_circuit_1:
-      name: "Heating Circuit 1"
-    heating_circuit_2:
-      name: "Heating Circuit 2"
-    hot_water:
-      name: "Hot Water"
+- platform: otgw
+  room_thermostat:
+    name: "Room"
+
+water_heater:
+- platform: otgw
+  heating_circuit_1:
+    name: "Heating Circuit 1"
+  heating_circuit_2:
+    name: "Heating Circuit 2"
+  hot_water:
+    name: "Hot Water"
