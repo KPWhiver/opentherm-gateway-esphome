@@ -300,7 +300,7 @@ class OpenthermGateway : public Component, public uart::UARTDevice {
 inline void OpenthermGateway::HeatingCircuit::set_target(OpenthermGateway &gateway) {
   char parameter[6];
 
-  if (_component->is_on()) {
+  if (_component->get_mode() != water_heater::WATER_HEATER_MODE_OFF) {
     // Do not go below 5 to avoid control being given back to the thermostat
     sprintf(parameter, "%2.2f", max(_component->get_target_temperature(), 5.0f));
     gateway.queue_command(_temp_command, parameter);
@@ -310,7 +310,7 @@ inline void OpenthermGateway::HeatingCircuit::set_target(OpenthermGateway &gatew
 inline void OpenthermGateway::HeatingCircuit::set_mode(OpenthermGateway &gateway) {
   char parameter[6];
 
-  if (_component->is_on()) {
+  if (_component->get_mode() != water_heater::WATER_HEATER_MODE_OFF) {
     if (!std::isnan(_component->get_target_temperature())) {
       float target_temperature = _component->get_target_temperature();
       if (target_temperature == 0) {
