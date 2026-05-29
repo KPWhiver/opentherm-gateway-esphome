@@ -263,6 +263,7 @@ bool OpenthermGateway::handle_slave_response(uint8_t data_type, uint16_t data) {
       if (_room_thermostat != nullptr) {
         _room_thermostat->set_cooling_supported(slave_configuration[2]);
       }
+      break;
     }
     case FaultFlags::ID: {
       std::bitset<8> bits(high_data);
